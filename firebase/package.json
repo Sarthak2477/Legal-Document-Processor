@@ -1,0 +1,17 @@
+{
+  "name": "contract-processing-functions",
+  "version": "1.0.0",
+  "description": "Firebase Functions for contract processing pipeline",
+  "main": "main.py",
+  "dependencies": {
+    "firebase-functions": "^4.0.0",
+    "firebase-admin": "^11.0.0"
+  },
+  "scripts": {
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "python": "3.9"
+  }
+}

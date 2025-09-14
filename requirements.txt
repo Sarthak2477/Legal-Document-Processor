@@ -1,0 +1,44 @@
+# OCR and PDF processing
+tesseract
+pytesseract
+pdfplumber
+PyMuPDF
+Pillow
+
+# NLP and text processing
+spacy
+langchain
+langchain-google-vertexai
+sentence-transformers
+torch
+numpy
+pandas
+
+# Layout analysis
+layoutparser[ocr]
+detectron2
+
+# Vector storage and database
+supabase
+pgvector
+psycopg2-binary
+
+# Firebase and Google Cloud
+firebase-admin
+google-cloud-firestore
+google-cloud-storage
+google-cloud-functions-framework
+google-cloud-aiplatform
+
+# Machine Learning and AI
+google-cloud-aiplatform
+huggingface-hub
+transformers
+
+# Utilities
+python-dotenv
+pydantic
+typer
+rich
+loguru
+functions-framework
