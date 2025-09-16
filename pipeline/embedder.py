@@ -19,16 +19,14 @@ class ContractEmbedder:
         supabase_key: Optional[str] = None
     ):
         """Initialize embedder with sentence transformer model and database."""
-        # TODO: Load sentence transformer model
+        self.logger = logging.getLogger(__name__)
         self.model = SentenceTransformer(model_name)
         
-        # TODO: Initialize Supabase client for vector storage
         if supabase_url and supabase_key:
             self.supabase: Client = create_client(supabase_url, supabase_key)
+            self._setup_vector_table()
         else:
             self.supabase = None
-        
-        self.logger = logging.getLogger(__name__)
     
     def generate_embeddings(self, clauses: List[Clause]) -> List[Clause]:
         """
@@ -40,10 +38,11 @@ class ContractEmbedder:
         Returns:
             List of clauses with embeddings added
         """
-        # TODO: Extract text from clauses
+        if not clauses:
+            return clauses
+            
         texts = [clause.text for clause in clauses]
         
-        # TODO: Generate embeddings in batches
         embeddings = self.model.encode(
             texts,
             batch_size=32,
@@ -51,7 +50,6 @@ class ContractEmbedder:
             convert_to_numpy=True
         )
         
-        # TODO: Add embeddings to clause objects
         for clause, embedding in zip(clauses, embeddings):
             clause.embedding = embedding.tolist()
         
@@ -72,11 +70,30 @@ class ContractEmbedder:
             self.logger.warning("Supabase client not initialized")
             return False
         
-        # TODO: Prepare data for insertion
-        # TODO: Insert vectors into pgvector table
-        # TODO: Handle batch insertions for large contracts
-        # TODO: Store metadata alongside vectors
-        pass
+        try:
+            data = []
+            for clause in clauses:
+                if clause.embedding:
+                    data.append({
+                        "contract_id": contract_id,
+                        "clause_id": clause.id,
+                        "text": clause.text,
+                        "embedding": clause.embedding,
+                        "metadata": {
+                            "clause_type": clause.clause_type,
+                            "section": clause.section,
+                            "page_number": clause.page_number
+                        }
+                    })
+            
+            if data:
+                self.supabase.table("clause_vectors").insert(data).execute()
+                self.logger.info(f"Stored {len(data)} vectors for contract {contract_id}")
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to store vectors: {e}")
+            return False
     
     def search_similar_clauses(
         self, 
@@ -95,39 +112,76 @@ class ContractEmbedder:
         Returns:
             List of similar clauses with metadata
         """
-        # TODO: Generate embedding for query text
-        query_embedding = self.model.encode([query_text])
+        if not self.supabase:
+            self.logger.warning("Supabase client not initialized")
+            return []
         
-        # TODO: Perform vector similarity search in Supabase
-        # TODO: Use pgvector's cosine similarity or L2 distance
-        # TODO: Filter by similarity threshold
-        # TODO: Return results with similarity scores
-        pass
+        try:
+            query_embedding = self.model.encode([query_text])[0].tolist()
+            
+            result = self.supabase.rpc(
+                "match_clauses",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": similarity_threshold,
+                    "match_count": limit
+                }
+            ).execute()
+            
+            return result.data if result.data else []
+        except Exception as e:
+            self.logger.error(f"Search failed: {e}")
+            return []
     
     def _setup_vector_table(self):
         """Set up pgvector table for storing clause embeddings."""
-        # TODO: Create table with vector column
-        # TODO: Set up indexes for efficient similarity search
-        # TODO: Define schema for metadata storage
-        sql = """
-        CREATE TABLE IF NOT EXISTS clause_vectors (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            contract_id TEXT NOT NULL,
-            clause_id TEXT NOT NULL,
-            text TEXT NOT NULL,
-            embedding vector(384),  -- Dimension depends on model
-            metadata JSONB,
-            created_at TIMESTAMPTZ DEFAULT now()
-        );
-        
-        CREATE INDEX IF NOT EXISTS clause_vectors_embedding_idx 
-        ON clause_vectors USING ivfflat (embedding vector_cosine_ops);
-        """
-        pass
+        try:
+            # Create table and function for similarity search
+            self.supabase.rpc("setup_clause_vectors").execute()
+            self.logger.info("Vector table setup completed")
+        except Exception as e:
+            self.logger.warning(f"Vector table setup failed: {e}")
     
     def update_embeddings(self, clause_ids: List[str]) -> bool:
         """Update embeddings for specific clauses."""
-        # TODO: Retrieve clauses by IDs
-        # TODO: Regenerate embeddings
-        # TODO: Update vectors in database
-        pass
+        if not self.supabase:
+            return False
+        
+        try:
+            # Retrieve clauses
+            result = self.supabase.table("clause_vectors").select("*").in_("clause_id", clause_ids).execute()
+            
+            if not result.data:
+                return False
+            
+            # Regenerate embeddings
+            texts = [row["text"] for row in result.data]
+            embeddings = self.model.encode(texts, convert_to_numpy=True)
+            
+            # Update in database
+            for row, embedding in zip(result.data, embeddings):
+                self.supabase.table("clause_vectors").update({
+                    "embedding": embedding.tolist()
+                }).eq("id", row["id"]).execute()
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Update failed: {e}")
+            return False
+    
+def test_embedding_storage(embedder, text: str):
+        embedding = embedder.model.encode(text).tolist()
+        response = embedder.supabase.table("embeddings").insert({
+            "content": text,
+            "embedding": embedding
+        }).execute()
+
+        if response.data:
+            print("✅ Embedding stored successfully:", response.data)
+        else:
+            print("❌ Failed to store embedding:", response.error)
+
+        return response
+if __name__ == "__main__":
+    embedder = ContractEmbedder()  # uses your __init__ setup
+    test_embedding_storage(embedder, "This is a test clause for storage check.")
