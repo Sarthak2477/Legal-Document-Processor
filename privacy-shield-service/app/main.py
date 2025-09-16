@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import redact, chat
+from routers import redact
 
 app = FastAPI(
     title="Legal Document Analysis API",
@@ -9,7 +9,7 @@ app = FastAPI(
 
 # Include the routers from the other files
 app.include_router(redact.router, tags=["PII Redaction"])
-app.include_router(chat.router, tags=["Document Chat (RAG)"])
+
 
 @app.get("/", tags=["Health Check"])
 async def read_root():

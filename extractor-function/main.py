@@ -2,17 +2,22 @@ import functions_framework
 import requests
 import json
 from google.cloud import documentai, firestore
+from google.protobuf.json_format import MessageToJson # <--- ADD THIS IMPORT
+import os
 
-# --- Your Configuration: FILL THESE IN ---
-GCP_PROJECT="graphic-nucleus-470014-i6"
-GCP_REGION="us"
-DOC_AI_PROCESSOR_ID="b9c81ca1e6e6b84d"
-PRIVACY_SHIELD_URL="https://privacy-shield-service-141718440544.us-central1.run.app/redact"
-# ----------------------------------------
+# --- Configuration is now read from Environment Variables ---
+GCP_PROJECT = os.getenv("GCP_PROJECT")
+GCP_REGION = os.getenv("GCP_REGION")
+DOC_AI_PROCESSOR_ID = os.getenv("DOC_AI_PROCESSOR_ID")
+PRIVACY_SHIELD_URL = os.getenv("PRIVACY_SHIELD_URL")
 
-# Initialize all clients
-docai_client = documentai.DocumentProcessorServiceClient()
+# --- Check that all required variables are set ---
+REQUIRED_VARS = [GCP_PROJECT, GCP_REGION, DOC_AI_PROCESSOR_ID, PRIVACY_SHIELD_URL]
+if not all(REQUIRED_VARS):
+    raise RuntimeError("Missing one or more required environment variables.")
+
 firestore_client = firestore.Client()
+docai_client = documentai.DocumentProcessorServiceClient()
 FIRESTORE_COLLECTION = "legal_documents"
 
 @functions_framework.cloud_event
@@ -28,7 +33,6 @@ def trigger_extractor(cloud_event):
     doc_ref.set({"status": "PROCESSING", "filename": filename})
 
     try:
-        # Step 1: Document AI Extraction
         gcs_uri = f"gs://{bucket}/{filename}"
         full_processor_name = docai_client.processor_path(GCP_PROJECT, GCP_REGION, DOC_AI_PROCESSOR_ID)
         request = documentai.ProcessRequest(
@@ -36,13 +40,15 @@ def trigger_extractor(cloud_event):
             gcs_document=documentai.GcsDocument(gcs_uri=gcs_uri, mime_type="application/pdf")
         )
         result = docai_client.process_document(request=request)
+        
+        # --- CHANGE #1: Convert the full result to a JSON-friendly format ---
+        document_ai_json = json.loads(MessageToJson(result.document._pb))
         extracted_text = result.document.text
         
         if not extracted_text:
             raise ValueError("Document AI returned no text.")
         print("Text extraction successful.")
         
-        # Step 2: Privacy Shield Redaction
         response = requests.post(
             PRIVACY_SHIELD_URL,
             headers={"Content-Type": "application/json"},
@@ -52,10 +58,11 @@ def trigger_extractor(cloud_event):
         sanitized_json = response.json()
         print(f"Service responded successfully: {sanitized_json}")
 
-        # Step 3: Save to Firestore
+        # --- CHANGE #2: Save the full JSON and the sanitized text ---
         doc_ref.update({
             "status": "COMPLETED",
             "sanitized_text": sanitized_json.get("sanitized_text"),
+            "document_ai_json": document_ai_json,
             "processed_at": firestore.SERVER_TIMESTAMP
         })
         print("Successfully saved to Firestore.")
