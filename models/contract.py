@@ -17,13 +17,17 @@ class Clause(BaseModel):
     embedding: Optional[List[float]] = None
     page_number: Optional[int] = None
     confidence_score: Optional[float] = None
+    metadata: Dict[str, Any] = {}
 
 
 class ContractSection(BaseModel):
     """Contract section containing multiple clauses."""
+    id: str
     title: str
+    text: str
     clauses: List[Clause] = []
     level: int = 1  # Heading level
+    metadata: Dict[str, Any] = {}
 
 
 class ExtractedEntity(BaseModel):
@@ -51,6 +55,7 @@ class ProcessedContract(BaseModel):
     """Complete processed contract model."""
     metadata: ContractMetadata
     sections: List[ContractSection] = []
+    clauses: List[Clause] = []
     entities: List[ExtractedEntity] = []
     raw_text: str = ""
     structured_data: Dict[str, Any] = {}
