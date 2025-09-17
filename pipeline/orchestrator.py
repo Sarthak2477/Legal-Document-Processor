@@ -4,7 +4,7 @@ Main pipeline orchestrator for contract processing.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from pipeline.ocr_extractor import OCRExtractor
@@ -79,43 +79,62 @@ class ContractPipeline:
             Processing results and file paths
         """
         self.logger.info(f"Processing contract: {file_path}")
+        start_time = datetime.now()
         
         try:
-            # TODO: Step 1 - OCR/Text Extraction
-            raw_text, metadata = self.ocr_extractor.extract_text(file_path)
+            # Step 1 - OCR/Text Extraction
+            result = self.ocr_extractor.extract_text(file_path)
+            if result is None or len(result) != 2:
+                raise ValueError("OCR extraction failed or returned invalid result")
+            
+            raw_text, metadata = result
+            if raw_text is None or metadata is None:
+                raise ValueError("OCR extraction returned None values")
+            
             self.logger.info("✓ Text extraction completed")
             
-            # TODO: Step 2 - Layout & Semantic Parsing
+            # Step 2 - Layout & Semantic Parsing
             contract = self.layout_parser.parse_structure(raw_text, metadata)
+            if contract is None:
+                raise ValueError("Layout parsing failed")
+            
             self.logger.info("✓ Layout parsing completed")
             
-            # TODO: Step 3 - Preprocessing & Normalization
-            contract.sections = self._preprocess_sections(contract.sections)
+            # Step 3 - Preprocessing & Normalization
+            processed_clauses = self.preprocessor.preprocess_clauses(contract.clauses)
+            contract.clauses = processed_clauses
             self.logger.info("✓ Preprocessing completed")
             
-            # TODO: Step 4 - Generate Embeddings
-            contract = self._generate_embeddings(contract)
+            # Step 4 - Generate Embeddings
+            clauses_with_embeddings = self.embedder.generate_embeddings(contract.clauses)
+            contract.clauses = clauses_with_embeddings
             self.logger.info("✓ Embeddings generated")
             
-            # TODO: Step 5 - Store Vectors (if database available)
+            # Step 5 - Store Vectors (if database available)
             if settings.SUPABASE_URL:
-                self._store_vectors(contract)
+                contract_id = Path(file_path).stem
+                self.embedder.store_vectors(contract.clauses, contract_id)
                 self.logger.info("✓ Vectors stored")
             
-            # TODO: Step 6 - Generate Analysis
+            # Step 6 - Generate Analysis
             analysis = self._generate_analysis(contract)
             self.logger.info("✓ Analysis completed")
             
-            # TODO: Save outputs
+            # Save outputs
             if output_dir:
                 output_paths = self._save_outputs(contract, analysis, output_dir)
             else:
                 output_paths = {}
             
-            # TODO: Store in Firestore
+            # Store in Firestore (if available)
             contract_id = Path(file_path).stem
-            self.firestore_manager.store_contract(contract, contract_id)
-            self.firestore_manager.store_analysis(contract_id, analysis)
+            try:
+                self.firestore_manager.store_contract(contract, contract_id)
+                self.firestore_manager.store_analysis(contract_id, analysis)
+            except Exception as e:
+                self.logger.warning(f"Firestore storage failed: {e}")
+            
+            processing_time = datetime.now() - start_time
             
             return {
                 'success': True,
@@ -123,7 +142,7 @@ class ContractPipeline:
                 'analysis': analysis,
                 'output_paths': output_paths,
                 'contract_id': contract_id,
-                'processing_time': datetime.now() - metadata.processing_date
+                'processing_time': processing_time
             }
             
         except Exception as e:
@@ -181,29 +200,71 @@ class ContractPipeline:
         """Generate comprehensive contract analysis."""
         analysis = {}
         
-        # TODO: Generate summary
-        analysis['summary'] = self.rag_generator.generate_summary(contract)
+        try:
+            # Generate summary
+            analysis['summary'] = self.rag_generator.generate_summary(contract)
+        except Exception as e:
+            self.logger.warning(f"Summary generation failed: {e}")
+            analysis['summary'] = "Summary generation unavailable"
         
-        # TODO: Risk analysis
-        analysis['risks'] = self.rag_generator.analyze_risks(contract)
+        try:
+            # Risk analysis
+            analysis['risks'] = self.rag_generator.analyze_risks(contract)
+        except Exception as e:
+            self.logger.warning(f"Risk analysis failed: {e}")
+            analysis['risks'] = []
         
-        # TODO: Redline suggestions
-        analysis['redlines'] = self.rag_generator.suggest_redlines(contract)
+        try:
+            # Redline suggestions
+            analysis['redlines'] = self.rag_generator.suggest_redlines(contract)
+        except Exception as e:
+            self.logger.warning(f"Redline suggestions failed: {e}")
+            analysis['redlines'] = []
         
-        # TODO: Key terms extraction
+        # Key terms extraction (local processing)
         analysis['key_terms'] = self._extract_key_terms(contract)
         
         return analysis
     
     def _extract_key_terms(self, contract: ProcessedContract) -> Dict[str, Any]:
         """Extract key terms and provisions from contract."""
-        # TODO: Identify important terms:
-        # - Parties
-        # - Effective dates
-        # - Payment terms
-        # - Termination conditions
-        # - Governing law
-        pass
+        key_terms = {
+            'parties': [],
+            'effective_dates': [],
+            'payment_terms': [],
+            'termination_conditions': [],
+            'governing_law': [],
+            'obligations': [],
+            'conditions': []
+        }
+        
+        # Extract from contract metadata
+        if hasattr(contract.metadata, 'parties') and contract.metadata.parties:
+            key_terms['parties'] = contract.metadata.parties
+        
+        # Extract from clauses
+        for clause in contract.clauses:
+            if clause.key_terms:
+                for term in clause.key_terms:
+                    if 'payment' in term.lower() or 'fee' in term.lower():
+                        key_terms['payment_terms'].append(term)
+                    elif 'terminate' in term.lower() or 'end' in term.lower():
+                        key_terms['termination_conditions'].append(term)
+                    elif 'law' in term.lower() or 'jurisdiction' in term.lower():
+                        key_terms['governing_law'].append(term)
+            
+            if clause.obligations:
+                key_terms['obligations'].extend(clause.obligations)
+            
+            if clause.conditions:
+                key_terms['conditions'].extend(clause.conditions)
+        
+        # Remove duplicates
+        for key in key_terms:
+            if isinstance(key_terms[key], list):
+                key_terms[key] = list(set(key_terms[key]))
+        
+        return key_terms
     
     def _save_outputs(
         self, 

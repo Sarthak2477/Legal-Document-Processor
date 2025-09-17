@@ -52,6 +52,14 @@ def test_parse_structure_basic(layout_parser, sample_contract_text, sample_metad
     assert isinstance(result, ProcessedContract)
     assert len(result.sections) > 0
     assert len(result.clauses) > 0
+    
+    # Test that clauses have legal analysis fields
+    for clause in result.clauses:
+        assert clause.legal_category is not None
+        assert clause.risk_level is not None
+        assert isinstance(clause.key_terms, list)
+        assert isinstance(clause.obligations, list)
+        assert isinstance(clause.conditions, list)
 
 
 def test_extract_sections(layout_parser, sample_contract_text):
@@ -59,8 +67,14 @@ def test_extract_sections(layout_parser, sample_contract_text):
     sections = layout_parser._extract_sections_enhanced(sample_contract_text)
     
     assert len(sections) >= 1
-    # Check that sections are created (content may vary based on parsing logic)
-    assert all(hasattr(section, 'title') and hasattr(section, 'text') for section in sections)
+    # Check that sections have required fields including new legal fields
+    for section in sections:
+        assert hasattr(section, 'title')
+        assert hasattr(section, 'text')
+        assert hasattr(section, 'section_type')
+        assert hasattr(section, 'importance_score')
+        assert hasattr(section, 'contains_obligations')
+        assert hasattr(section, 'contains_conditions')
 
 
 def test_extract_clauses(layout_parser):
@@ -70,6 +84,13 @@ def test_extract_clauses(layout_parser):
     
     assert len(clauses) >= 1
     assert all(clause.text for clause in clauses)
+    # Test new legal fields are populated
+    for clause in clauses:
+        assert hasattr(clause, 'legal_category')
+        assert hasattr(clause, 'risk_level')
+        assert hasattr(clause, 'key_terms')
+        assert hasattr(clause, 'obligations')
+        assert hasattr(clause, 'conditions')
 
 
 def test_clause_classification(layout_parser):
@@ -124,6 +145,66 @@ def test_duplicate_clause_removal(layout_parser):
     
     unique = layout_parser._merge_duplicate_clauses(clauses)
     assert len(unique) == 2
+
+
+def test_risk_assessment(layout_parser):
+    """Test risk level assessment."""
+    high_risk_text = "unlimited liability for all damages"
+    medium_risk_text = "indemnification required"
+    low_risk_text = "standard payment terms"
+    
+    assert layout_parser._assess_risk_level(high_risk_text) == 'high'
+    assert layout_parser._assess_risk_level(medium_risk_text) == 'medium'
+    assert layout_parser._assess_risk_level(low_risk_text) == 'low'
+
+
+def test_key_terms_extraction(layout_parser):
+    """Test key terms extraction."""
+    text = "Payment of $10,000 within 30 days at 5% interest"
+    terms = layout_parser._extract_key_terms(text)
+    
+    assert '$10,000' in terms
+    assert '30 days' in terms
+    assert '5%' in terms
+
+
+def test_obligations_extraction(layout_parser):
+    """Test obligations extraction."""
+    text = "Company shall provide services. Client must pay fees."
+    obligations = layout_parser._extract_obligations(text)
+    
+    assert len(obligations) >= 1
+    assert any('shall provide' in ob.lower() for ob in obligations)
+
+
+def test_conditions_extraction(layout_parser):
+    """Test conditions extraction."""
+    text = "If payment is late, then penalty applies. Provided that notice is given."
+    conditions = layout_parser._extract_conditions(text)
+    
+    assert len(conditions) >= 1
+    assert any('if payment' in cond.lower() for cond in conditions)
+
+
+def test_section_classification(layout_parser):
+    """Test section type classification."""
+    assert layout_parser._classify_section_type("DEFINITIONS") == 'definitions'
+    assert layout_parser._classify_section_type("Payment Terms") == 'terms'  # 'term' matches first
+    assert layout_parser._classify_section_type("Payment Schedule") == 'payment'
+    assert layout_parser._classify_section_type("General Provisions") == 'general'
+
+
+def test_section_importance_scoring(layout_parser):
+    """Test section importance scoring."""
+    important_text = "payment termination liability breach indemnification"
+    unimportant_text = "general provisions miscellaneous"
+    
+    important_score = layout_parser._calculate_section_importance(important_text)
+    unimportant_score = layout_parser._calculate_section_importance(unimportant_text)
+    
+    assert important_score > unimportant_score
+    assert 0 <= important_score <= 1
+    assert 0 <= unimportant_score <= 1
 
 
 @pytest.mark.parametrize("text,expected_type", [

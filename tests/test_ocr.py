@@ -15,7 +15,7 @@ from models.contract import ContractMetadata
 @pytest.fixture
 def sample_pdf_path():
     """Path to sample PDF file in tests directory."""
-    return str(Path(__file__).parent / "sample.pdf")
+    return str(Path(__file__).parent / "sample_legal_document.pdf")
 
 
 @pytest.fixture
@@ -213,17 +213,15 @@ def test_extract_with_ocr(mock_image, mock_tesseract, mock_fitz, ocr_extractor, 
 
 def test_preprocess_image(ocr_extractor):
     """Test image preprocessing."""
-    with patch('PIL.ImageEnhance'), \
-         patch('PIL.ImageFilter'):
-        
-        mock_image = Mock()
-        mock_image.mode = 'RGB'
-        mock_image.convert.return_value = mock_image
-        mock_image.filter.return_value = mock_image
-        
-        result = ocr_extractor._preprocess_image(mock_image)
-        
-        assert result is not None
+    mock_image = Mock()
+    mock_image.mode = 'RGB'
+    mock_image.convert.return_value = mock_image
+    mock_image.filter.return_value = mock_image
+    
+    result = ocr_extractor._preprocess_image(mock_image)
+    
+    # Should return the processed image (or original on error)
+    assert result is not None
 
 
 @patch('pipeline.ocr_extractor.os.stat')

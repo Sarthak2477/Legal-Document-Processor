@@ -16,6 +16,7 @@ from PIL import Image
 import torch
 import numpy as np
 from models.contract import ProcessedContract, ContractSection, Clause
+from pipeline.risk_assesment import RiskAssessor
 
 
 @dataclass
@@ -43,6 +44,7 @@ class LayoutParser:
         self.nlp = self._load_spacy_model()
         self.legal_patterns = self._initialize_legal_patterns()
         self.clause_keywords = self._initialize_clause_keywords()
+        self.risk_assessor = RiskAssessor()
         
         if use_layoutlm:
             self._load_layoutlm_model()
@@ -150,6 +152,9 @@ class LayoutParser:
         for section in sections:
             clauses = self._extract_clauses_enhanced(section.text, section.id)
             section.clauses = clauses
+            # Update section flags based on clauses
+            section.contains_obligations = any(clause.obligations for clause in clauses)
+            section.contains_conditions = any(clause.conditions for clause in clauses)
             all_clauses.extend(clauses)
 
         # Post-process and classify clauses
@@ -195,23 +200,15 @@ class LayoutParser:
         section_breaks.sort(key=lambda x: x['start'])
         
         if not section_breaks:
-            # Fallback: treat as single document
-            return [ContractSection(id="S1", title="Complete Document", text=text, clauses=[])]
+            # Intelligent fallback: split by paragraph patterns
+            return self._fallback_section_extraction(text)
 
-        for i, break_info in enumerate(section_breaks):
-            start = break_info['start']
-            end = section_breaks[i + 1]['start'] if i + 1 < len(section_breaks) else len(text)
-            
-            section_text = text[start:end].strip()
-            section_id = f"S{i+1}"
-            
-            sections.append(ContractSection(
-                id=section_id,
-                title=break_info['title'],
-                text=section_text,
-                clauses=[]
-            ))
-
+        # Create hierarchical sections with semantic grouping
+        sections = self._create_hierarchical_sections(text, section_breaks)
+        
+        # Apply semantic grouping
+        sections = self._apply_semantic_grouping(sections)
+        
         return sections
 
     def _extract_clauses_enhanced(self, text: str, section_id: str) -> List[Clause]:
@@ -238,6 +235,11 @@ class LayoutParser:
                 clause = Clause(
                     id=f"{section_id}_C{clause_id}",
                     text=self._clean_clause_text(clause_text),
+                    legal_category=self._determine_clause_type(clause_text),
+                    risk_level=self.risk_assessor.assess(clause_text),
+                    key_terms=self._extract_key_terms(clause_text),
+                    obligations=self._extract_obligations(clause_text),
+                    conditions=self._extract_conditions(clause_text),
                     metadata={
                         "length": len(clause_text),
                         "source": "enhanced_extraction",
@@ -373,8 +375,8 @@ class LayoutParser:
     def _classify_clauses(self, clauses: List[Clause]) -> List[Clause]:
         """Classify clauses by legal type using keyword matching."""
         for clause in clauses:
-            clause_type = self._determine_clause_type(clause.text)
-            clause.metadata["clause_type"] = clause_type
+            if not clause.legal_category:
+                clause.legal_category = self._determine_clause_type(clause.text)
             clause.metadata["legal_keywords"] = self._extract_legal_keywords(clause.text)
         
         return clauses
@@ -410,20 +412,27 @@ class LayoutParser:
         return found_keywords
 
     def _merge_duplicate_clauses(self, clauses: List[str]) -> List[str]:
-        """Remove duplicate and highly similar clauses."""
+        """Remove duplicate and highly similar clauses with improved logic."""
         unique_clauses = []
         
         for clause in clauses:
             clause_clean = re.sub(r'\W+', '', clause.lower())
             
-            # Check for similarity with existing clauses
+            # Skip very short clauses
+            if len(clause_clean) < 20:
+                continue
+                
             is_duplicate = False
             for existing in unique_clauses:
                 existing_clean = re.sub(r'\W+', '', existing.lower())
                 
-                # Simple similarity check
-                if (clause_clean in existing_clean or existing_clean in clause_clean or 
-                    len(set(clause_clean) & set(existing_clean)) / max(len(clause_clean), len(existing_clean)) > 0.8):
+                # More conservative similarity check
+                similarity = len(set(clause_clean) & set(existing_clean)) / max(len(clause_clean), len(existing_clean))
+                
+                # Only merge if very similar AND one is a clear substring
+                if (similarity > 0.95 and 
+                    (len(clause_clean) < len(existing_clean) * 0.6 or 
+                    len(existing_clean) < len(clause_clean) * 0.6)):
                     is_duplicate = True
                     break
             
@@ -692,3 +701,260 @@ class LayoutParser:
         multi_space_count = len(re.findall(r'\s{2,}', first_line))
         
         return max(pipe_count - 1, tab_count, multi_space_count) if any([pipe_count, tab_count, multi_space_count]) else 1
+    
+
+    
+    def _extract_key_terms(self, text: str) -> List[str]:
+        """Extract key legal terms from clause."""
+        patterns = [
+            r'\$[\d,]+(?:\.\d{2})?',  # Money
+            r'\d+\s+(?:days?|months?|years?)',  # Time periods
+            r'\d+%'  # Percentages
+        ]
+        
+        terms = []
+        for pattern in patterns:
+            terms.extend(re.findall(pattern, text))
+        return list(set(terms))
+    
+    def _extract_obligations(self, text: str) -> List[str]:
+        """Extract obligations from clause text."""
+        patterns = [
+            r'(\w+\s+(?:shall|must|will|agrees?\s+to)\s+[^.]+)',
+            r'(\w+\s+(?:is|are)\s+(?:required|obligated)\s+to\s+[^.]+)'
+        ]
+        
+        obligations = []
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            obligations.extend([m.strip() for m in matches])
+        return obligations
+    
+    def _extract_conditions(self, text: str) -> List[str]:
+        """Extract conditions from clause text."""
+        patterns = [
+            r'(if\s+[^,]+,\s*[^.]+)',
+            r'(provided\s+that\s+[^.]+)',
+            r'(subject\s+to\s+[^.]+)',
+            r'(unless\s+[^.]+)'
+        ]
+        
+        conditions = []
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            conditions.extend([m.strip() for m in matches])
+        return conditions
+    
+    def _classify_section_type(self, title: str) -> str:
+        """Classify section type based on title."""
+        title_lower = title.lower()
+        if 'definition' in title_lower:
+            return 'definitions'
+        elif 'term' in title_lower:
+            return 'terms'
+        elif 'obligation' in title_lower or 'duties' in title_lower:
+            return 'obligations'
+        elif 'payment' in title_lower:
+            return 'payment'
+        elif 'termination' in title_lower:
+            return 'termination'
+        return 'general'
+    
+    def _calculate_section_importance(self, text: str) -> float:
+        """Calculate comprehensive importance score for section."""
+        # Critical importance keywords (high weight)
+        critical_keywords = {
+            'liability': 10, 'indemnification': 10, 'damages': 8,
+            'termination': 9, 'breach': 8, 'default': 8,
+            'payment': 7, 'compensation': 6, 'fee': 5,
+            'confidential': 7, 'proprietary': 6, 'trade secret': 8,
+            'intellectual property': 9, 'copyright': 6, 'patent': 6,
+            'governing law': 5, 'jurisdiction': 5, 'dispute': 6,
+            'force majeure': 4, 'assignment': 4, 'amendment': 3
+        }
+        
+        # Moderate importance keywords (medium weight)
+        moderate_keywords = {
+            'performance': 4, 'delivery': 4, 'service': 3,
+            'warranty': 5, 'representation': 4, 'compliance': 5,
+            'insurance': 4, 'notice': 2, 'consent': 3,
+            'approval': 3, 'standard': 2, 'requirement': 3
+        }
+        
+        text_lower = text.lower()
+        total_score = 0
+        max_possible_score = 0
+        
+        # Calculate weighted score
+        for keyword, weight in critical_keywords.items():
+            max_possible_score += weight
+            if keyword in text_lower:
+                # Count occurrences for repeated emphasis
+                occurrences = text_lower.count(keyword)
+                total_score += weight * min(occurrences, 3)  # Cap at 3x weight
+        
+        for keyword, weight in moderate_keywords.items():
+            max_possible_score += weight
+            if keyword in text_lower:
+                occurrences = text_lower.count(keyword)
+                total_score += weight * min(occurrences, 2)  # Cap at 2x weight
+        
+        # Consider section length (longer sections might be more important)
+        length_factor = min(len(text) / 1000, 2.0)  # Cap at 2x multiplier
+        total_score *= (1 + length_factor * 0.1)  # Small boost for length
+        
+        # Normalize to 0-1 scale
+        normalized_score = min(total_score / (max_possible_score * 0.3), 1.0)
+        
+        return normalized_score
+    
+    def _fallback_section_extraction(self, text: str) -> List[ContractSection]:
+        """Intelligent fallback when no clear headings are found."""
+        # Split by double line breaks and analyze content
+        paragraphs = re.split(r'\n\s*\n', text)
+        sections = []
+        current_section_text = ""
+        section_count = 1
+        
+        for para in paragraphs:
+            para = para.strip()
+            if len(para) < 20:  # Skip very short paragraphs
+                continue
+            
+            # Check if paragraph looks like a section start
+            if self._is_section_start(para):
+                # Save previous section if exists
+                if current_section_text:
+                    section = ContractSection(
+                        id=f"S{section_count}",
+                        title=f"Section {section_count}",
+                        text=current_section_text.strip(),
+                        clauses=[],
+                        section_type=self._classify_section_type(current_section_text[:100]),
+                        importance_score=self._calculate_section_importance(current_section_text)
+                    )
+                    sections.append(section)
+                    section_count += 1
+                
+                current_section_text = para
+            else:
+                current_section_text += "\n\n" + para
+        
+        # Add final section
+        if current_section_text:
+            section = ContractSection(
+                id=f"S{section_count}",
+                title=f"Section {section_count}",
+                text=current_section_text.strip(),
+                clauses=[],
+                section_type=self._classify_section_type(current_section_text[:100]),
+                importance_score=self._calculate_section_importance(current_section_text)
+            )
+            sections.append(section)
+        
+        return sections if sections else [ContractSection(id="S1", title="Complete Document", text=text, clauses=[])]
+    
+    def _is_section_start(self, paragraph: str) -> bool:
+        """Determine if a paragraph likely starts a new section."""
+        # Check for section indicators
+        section_indicators = [
+            r'^\d+\.',  # Numbered
+            r'^[A-Z]\.',  # Lettered
+            r'^[IVXLCDM]+\.',  # Roman numerals
+            r'^(WHEREAS|NOW THEREFORE|PROVIDED|SUBJECT TO)',  # Legal terms
+            r'^[A-Z][A-Z\s]{5,}$',  # All caps titles
+        ]
+        
+        for pattern in section_indicators:
+            if re.match(pattern, paragraph.strip(), re.IGNORECASE):
+                return True
+        
+        # Check if it's a short paragraph that looks like a title
+        if len(paragraph) < 100 and paragraph.isupper():
+            return True
+        
+        return False
+    
+    def _create_hierarchical_sections(self, text: str, section_breaks: List[Dict]) -> List[ContractSection]:
+        """Create sections with proper hierarchical relationships."""
+        sections = []
+        
+        for i, break_info in enumerate(section_breaks):
+            start = break_info['start']
+            end = section_breaks[i + 1]['start'] if i + 1 < len(section_breaks) else len(text)
+            
+            section_text = text[start:end].strip()
+            section_id = f"S{i+1}"
+            
+            # Determine parent section for hierarchy
+            parent_id = None
+            level = break_info.get('level', 1)
+            if level > 1:
+                # Find parent section (previous section with lower level)
+                for j in range(i-1, -1, -1):
+                    if section_breaks[j].get('level', 1) < level:
+                        parent_id = f"S{j+1}"
+                        break
+            
+            section = ContractSection(
+                id=section_id,
+                title=break_info['title'],
+                text=section_text,
+                clauses=[],
+                level=level,
+                section_type=self._classify_section_type(break_info['title']),
+                importance_score=self._calculate_section_importance(section_text)
+            )
+            
+            # Add hierarchy metadata
+            if not section.metadata:
+                section.metadata = {}
+            section.metadata['parent_section'] = parent_id
+            section.metadata['hierarchy_level'] = level
+            
+            sections.append(section)
+        
+        return sections
+    
+    def _apply_semantic_grouping(self, sections: List[ContractSection]) -> List[ContractSection]:
+        """Apply semantic grouping to related sections."""
+        # Define semantic groups
+        semantic_groups = {
+            'contract_formation': ['recital', 'background', 'preamble', 'whereas', 'parties'],
+            'definitions': ['definition', 'interpretation', 'meaning'],
+            'core_terms': ['scope', 'work', 'service', 'deliverable', 'performance'],
+            'financial': ['payment', 'fee', 'cost', 'price', 'compensation', 'invoice'],
+            'legal_compliance': ['law', 'regulation', 'compliance', 'jurisdiction', 'governing'],
+            'risk_management': ['liability', 'insurance', 'indemnification', 'limitation'],
+            'ip_confidentiality': ['intellectual', 'property', 'confidential', 'proprietary', 'trade secret'],
+            'contract_management': ['term', 'duration', 'renewal', 'termination', 'amendment'],
+            'dispute_resolution': ['dispute', 'arbitration', 'mediation', 'litigation'],
+            'miscellaneous': ['general', 'miscellaneous', 'other', 'additional']
+        }
+        
+        # Assign semantic groups to sections
+        for section in sections:
+            section_title_lower = section.title.lower()
+            section_text_lower = section.text[:200].lower()  # First 200 chars
+            
+            best_group = 'miscellaneous'
+            best_score = 0
+            
+            for group_name, keywords in semantic_groups.items():
+                score = 0
+                for keyword in keywords:
+                    if keyword in section_title_lower:
+                        score += 3  # Title matches are weighted more
+                    if keyword in section_text_lower:
+                        score += 1
+                
+                if score > best_score:
+                    best_score = score
+                    best_group = group_name
+            
+            if not section.metadata:
+                section.metadata = {}
+            section.metadata['semantic_group'] = best_group
+            section.metadata['semantic_score'] = best_score
+        
+        return sections

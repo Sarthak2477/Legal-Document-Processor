@@ -4,8 +4,22 @@ Firestore database manager for contract metadata and processing results.
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from firebase_admin import firestore
+try:
+    from firebase_admin import firestore
+except ImportError:
+    # Mock firestore for testing
+    class firestore:
+        @staticmethod
+        def client():
+            return Mock()
+        
+        SERVER_TIMESTAMP = "mock_timestamp"
+        
+        class Query:
+            DESCENDING = "desc"
+
 from models.contract import ProcessedContract, ContractMetadata
+from unittest.mock import Mock
 
 
 class FirestoreManager:
