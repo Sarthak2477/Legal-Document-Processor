@@ -42,7 +42,6 @@ class ContractEmbedder:
         
         if supabase_url and supabase_key:
             self.supabase: Client = create_client(supabase_url, supabase_key)
-            self._setup_vector_table()
         else:
             self.supabase = None
     
@@ -103,7 +102,7 @@ class ContractEmbedder:
     
     def store_vectors(self, clauses: List[Clause], contract_id: str) -> bool:
         """
-        Store clause vectors in Supabase with pgvector.
+        Store clause vectors in Supabase with enhanced metadata.
         
         Args:
             clauses: List of clauses with embeddings
@@ -120,16 +119,27 @@ class ContractEmbedder:
             data = []
             for clause in clauses:
                 if clause.embedding:
+                    metadata = {
+                        "clause_type": clause.clause_type or "",
+                        "section": clause.section or "",
+                        "page_number": clause.page_number or 0,
+                        "legal_category": clause.legal_category or "",
+                        "risk_level": clause.risk_level or "",
+                        "confidence_score": clause.confidence_score or 0.0,
+                        "key_terms": clause.key_terms or [],
+                        "obligations": clause.obligations or [],
+                        "conditions": clause.conditions or []
+                    }
+                    # Add custom metadata if exists
+                    if clause.metadata:
+                        metadata.update(clause.metadata)
+                    
                     data.append({
                         "contract_id": contract_id,
                         "clause_id": clause.id,
                         "text": clause.text,
                         "embedding": clause.embedding,
-                        "metadata": {
-                            "clause_type": clause.clause_type,
-                            "section": clause.section,
-                            "page_number": clause.page_number
-                        }
+                        "metadata": metadata
                     })
             
             if data:
@@ -147,10 +157,11 @@ class ContractEmbedder:
         limit: int = 10, 
         similarity_threshold: float = 0.7,
         contract_id: Optional[str] = None,
-        legal_category: Optional[str] = None
+        legal_category: Optional[str] = None,
+        use_hybrid: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Enhanced search with filtering and validation.
+        Enhanced search with hybrid semantic + keyword search.
         
         Args:
             query_text: Text to search for
@@ -158,6 +169,7 @@ class ContractEmbedder:
             similarity_threshold: Minimum similarity score
             contract_id: Filter by specific contract
             legal_category: Filter by legal category
+            use_hybrid: Use hybrid search (semantic + keyword)
             
         Returns:
             List of similar clauses with metadata and validation scores
@@ -178,19 +190,33 @@ class ContractEmbedder:
             model = self._get_model_for_language(detected_lang)
             query_embedding = model.encode([query_text], normalize_embeddings=True)[0].tolist()
             
-            # Build search parameters
-            search_params = {
-                "query_embedding": query_embedding,
-                "match_threshold": similarity_threshold,
-                "match_count": limit
-            }
-            
-            if contract_id:
-                search_params["contract_filter"] = contract_id
-            if legal_category:
-                search_params["category_filter"] = legal_category
-            
-            result = self.supabase.rpc("match_clauses_enhanced", search_params).execute()
+            if use_hybrid:
+                # Use hybrid search function with filters
+                search_params = {
+                    "query_text": query_text,
+                    "query_embedding": query_embedding,
+                    "match_count": limit
+                }
+                if contract_id:
+                    search_params["contract_filter"] = contract_id
+                if legal_category:
+                    search_params["category_filter"] = legal_category
+                    
+                result = self.supabase.rpc("hybrid_search", search_params).execute()
+            else:
+                # Use enhanced semantic search
+                search_params = {
+                    "query_embedding": query_embedding,
+                    "match_threshold": similarity_threshold,
+                    "match_count": limit
+                }
+                
+                if contract_id:
+                    search_params["contract_filter"] = contract_id
+                if legal_category:
+                    search_params["category_filter"] = legal_category
+                
+                result = self.supabase.rpc("match_clauses_enhanced", search_params).execute()
             
             if result.data:
                 # Validate and enhance results
@@ -204,13 +230,8 @@ class ContractEmbedder:
             return self._basic_search_fallback(query_text, limit, similarity_threshold)
     
     def _setup_vector_table(self):
-        """Set up pgvector table for storing clause embeddings."""
-        try:
-            # Create table and function for similarity search
-            self.supabase.rpc("setup_clause_vectors").execute()
-            self.logger.info("Vector table setup completed")
-        except Exception as e:
-            self.logger.warning(f"Vector table setup failed: {e}")
+        """Vector table already exists with new schema."""
+        self.logger.info("Using existing clause_vectors table")
     
     def update_embeddings(self, clause_ids: List[str]) -> bool:
         """Update embeddings for specific clauses."""
@@ -356,7 +377,7 @@ class ContractEmbedder:
     def _basic_search_fallback(self, query_text: str, limit: int, threshold: float) -> List[Dict[str, Any]]:
         """Fallback search method for when enhanced search fails."""
         try:
-            query_embedding = self.model.encode([query_text])[0].tolist()
+            query_embedding = self.model.encode([query_text], normalize_embeddings=True)[0].tolist()
             
             result = self.supabase.rpc(
                 "match_clauses",

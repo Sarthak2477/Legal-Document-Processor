@@ -112,27 +112,50 @@ class ContractRAGGenerator:
         # TODO: Provide rationale for each suggestion
         pass
     
-    def answer_questions(self, question: str, contract: ProcessedContract) -> str:
+    def answer_questions(self, question: str, contract: ProcessedContract = None, contract_id: str = None) -> str:
         """
-        Answer questions about the contract using RAG.
+        Answer questions using enhanced RAG with hybrid search.
         
         Args:
-            question: User question about the contract
-            contract: Processed contract object
+            question: User question
+            contract: Processed contract object (optional)
+            contract_id: Contract ID to search in database (optional)
             
         Returns:
             Answer based on contract content
         """
-        # TODO: Retrieve relevant clauses using semantic search
-        relevant_clauses = self._retrieve_relevant_clauses(question, contract)
-        
-        # TODO: Create context-aware prompt
-        prompt = self._create_qa_prompt(question, relevant_clauses)
-        
-        # TODO: Generate answer using LLM
-        answer = self._generate_with_llm(prompt)
-        
-        return answer
+        try:
+            if contract:
+                # Use contract clauses directly
+                relevant_clauses = self._retrieve_relevant_clauses(question, contract)
+            elif contract_id:
+                # Search specific contract in database
+                results = self.embedder.search_similar_clauses(
+                    query_text=question,
+                    limit=5,
+                    contract_id=contract_id,
+                    use_hybrid=True
+                )
+                relevant_clauses = [Clause(id=r['clause_id'], text=r['text']) for r in results]
+            else:
+                # Search across all contracts
+                results = self.embedder.search_similar_clauses(
+                    query_text=question,
+                    limit=5,
+                    use_hybrid=True
+                )
+                relevant_clauses = [Clause(id=r['clause_id'], text=r['text']) for r in results]
+            
+            # Create context-aware prompt
+            prompt = self._create_qa_prompt(question, relevant_clauses)
+            
+            # Generate answer using LLM
+            answer = self._generate_with_llm(prompt)
+            
+            return answer
+        except Exception as e:
+            self.logger.error(f"Question answering failed: {e}")
+            return "I'm sorry, I couldn't process your question at this time."
     
     def _identify_key_clauses(self, contract: ProcessedContract) -> List[Clause]:
         """Identify the most important clauses for summary generation."""
@@ -150,11 +173,32 @@ class ContractRAGGenerator:
         contract: ProcessedContract,
         top_k: int = 5
     ) -> List[Clause]:
-        """Retrieve most relevant clauses for a given query."""
-        # TODO: Use embedder to find similar clauses
-        # TODO: Filter by relevance score
-        # TODO: Ensure diversity in retrieved clauses
-        pass
+        """Retrieve most relevant clauses using hybrid search."""
+        if not self.embedder.supabase:
+            return contract.clauses[:top_k]  # Fallback to first clauses
+        
+        try:
+            # Use hybrid search for better retrieval
+            results = self.embedder.search_similar_clauses(
+                query_text=query,
+                limit=top_k,
+                use_hybrid=True
+            )
+            
+            # Convert results back to Clause objects
+            relevant_clauses = []
+            for result in results:
+                clause = Clause(
+                    id=result['clause_id'],
+                    text=result['text'],
+                    metadata=result.get('metadata', {})
+                )
+                relevant_clauses.append(clause)
+            
+            return relevant_clauses
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve relevant clauses: {e}")
+            return contract.clauses[:top_k]  # Fallback
     
     def _create_summary_prompt(
         self, 
