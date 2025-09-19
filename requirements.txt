@@ -42,3 +42,12 @@ typer
 rich
 loguru
 functions-framework
+
+# API Dependencies
+fastapi
+uvicorn[standard]
+aiosqlite
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+websockets
