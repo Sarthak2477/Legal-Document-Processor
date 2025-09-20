@@ -46,7 +46,7 @@ const IntroductionSection = () => {
   }, []);
 
   return (
-    <section className="relative py-24 bg-gradient-to-b from-black via-gray-900 to-black text-white overflow-hidden" style={{ fontFamily: "'Poppins', sans-serif" }}>
+    <section className="relative py-24 bg-gradient-to-b text-white overflow-hidden" style={{ fontFamily: "'Poppins', sans-serif" }}>
       
       {/* Enhanced animated background elements with Parallax */}
       <div className="absolute inset-0">
@@ -81,7 +81,7 @@ const IntroductionSection = () => {
           {/* Card 1 with 3D Tilt */}
           <div 
             className={`group relative bg-gradient-to-br from-slate-800/40 to-gray-900/60 backdrop-blur-sm rounded-3xl p-10 shadow-2xl border border-slate-700/50 transition-all duration-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`} 
-            style={{ ...card1Style, transitionDelay: '400ms' }}
+            style={{ ...card1Style, transitionDelay: card1Style.transition ? undefined : '400ms' }}
             onMouseMove={(e) => handleMouseMove(e, setCard1Style)}
             onMouseLeave={() => handleMouseLeave(setCard1Style)}
           >
@@ -117,7 +117,7 @@ const IntroductionSection = () => {
           {/* Card 2 with 3D Tilt */}
           <div 
             className={`group relative bg-gradient-to-br from-slate-800/40 to-gray-900/60 backdrop-blur-sm rounded-3xl p-10 shadow-2xl border border-slate-700/50 transition-all duration-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`} 
-            style={{ ...card2Style, transitionDelay: '600ms' }}
+            style={{ ...card2Style, transitionDelay: card2Style.transition ? undefined : '600ms' }}
             onMouseMove={(e) => handleMouseMove(e, setCard2Style)}
             onMouseLeave={() => handleMouseLeave(setCard2Style)}
           >

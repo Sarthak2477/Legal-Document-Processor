@@ -67,7 +67,7 @@ const FeaturesShowcase = () => {
   return (
     <section
       ref={sectionRef}
-      className="relative bg-gradient-to-b from-black via-gray-900 to-black py-28"
+      className="relative py-28"
       style={{ fontFamily: "'Poppins', sans-serif" }}
     >
       {/* Background Enhancements */}

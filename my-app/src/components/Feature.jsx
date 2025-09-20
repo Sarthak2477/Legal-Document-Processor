@@ -74,7 +74,7 @@ const FeaturesPage = () => {
     }, []);
 
     return (
-        <div className="bg-gradient-to-b from-black via-gray-900 to-black relative overflow-hidden" style={{ fontFamily: "'Poppins', sans-serif" }}>
+        <div className="relative overflow-hidden" style={{ fontFamily: "'Poppins', sans-serif" }}>
             
             {/* Consistent themed background elements */}
             <div className="absolute inset-0">

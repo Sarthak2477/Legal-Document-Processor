@@ -1,26 +1,33 @@
-// 1. Correct import paths using the standard Next.js '@/' alias
+"use client";
 import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/Hero-section';
 import FeaturesSection from '@/components/Feature';
 import IntroductionSection from '@/components/IntroductionSection';
-import FeaturesShowcase from '@/components/FeaturesShowcase'; // Assuming you have this component
+import FeaturesShowcase from '@/components/FeaturesShowcase';
 import Footer from '@/components/Footer';
+import Beams from '@/components/Beams';
 
-// 2. Renamed component to be more descriptive (best practice)
 const LandingPage = () => {
-    return (
-        <div className="bg-black" style={{ fontFamily: "'Inter', sans-serif" }}>
-            <Navbar />
-            <main>
-                <HeroSection />
-                <FeaturesSection />
-                <FeaturesShowcase />
-                <IntroductionSection />
-                {/* <Testimonials />  */}
-            </main>
-            <Footer />
-        </div>
-    );
+  return (
+    <div className="relative min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
+      
+      {/* Beams Background */}
+      <div className="absolute inset-0 -z-10">
+        <Beams lightColor="blue" rotation="20"  scale="0.2" beamHeight="30" />
+      </div>
+
+      {/* Page Content */}
+      <Navbar />
+      <main>
+        <HeroSection />
+        <FeaturesSection />
+        <FeaturesShowcase />
+        <IntroductionSection />  
+       {/* <Testimonials /> */}
+      </main>
+       <Footer /> 
+    </div>
+  );
 };
 
 export default LandingPage;

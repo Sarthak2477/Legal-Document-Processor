@@ -1,9 +1,9 @@
 "use client";
 import React from "react";
-
+import Beams from '@/components/Beams';
 const Footer = () => {
   return (
-    <footer className="bg-gradient-to-b from-black via-gray-900 to-black" style={{ fontFamily: "'Poppins', sans-serif" }}>
+    <footer className="" style={{ fontFamily: "'Poppins', sans-serif" }}>
       <div className="container mx-auto max-w-7xl px-6 py-16">
         
         {/* Top Section: Links & Branding */}
