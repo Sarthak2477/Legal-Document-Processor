@@ -39,6 +39,116 @@ cp .env.example .env
 # Edit .env with your Firebase project ID and Google Cloud credentials
 ```
 
+## API Server
+
+The project includes a comprehensive FastAPI backend for frontend integration:
+
+### Quick Start
+
+```bash
+# Install API dependencies
+pip install -r requirements.txt
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Run the API server
+python run_api.py
+```
+
+The API will be available at `http://localhost:8000` with interactive documentation at `http://localhost:8000/docs`.
+
+### Docker Deployment
+
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
+
+# Or run individual services
+docker build -t contract-api .
+docker run -p 8000:8000 contract-api
+```
+
+### API Features
+
+- **Contract Upload & Processing**: Upload PDF contracts for automated processing
+- **Real-time Updates**: WebSocket connections for processing progress
+- **Contract Analysis**: Comprehensive legal analysis with risk assessment
+- **Question Answering**: RAG-powered Q&A about contract content
+- **Search & Discovery**: Semantic search across contracts
+- **Batch Processing**: Process multiple contracts simultaneously
+- **Analytics**: Processing metrics and insights
+- **Export**: Download contracts and analysis in various formats
+
+### API Endpoints
+
+#### Contract Management
+- `POST /api/contracts/upload` - Upload contract file
+- `GET /api/contracts` - List user contracts
+- `GET /api/contracts/{id}` - Get contract details
+- `DELETE /api/contracts/{id}` - Delete contract
+- `POST /api/contracts/{id}/process` - Start processing
+- `GET /api/contracts/{id}/status` - Get processing status
+
+#### Analysis & Q&A
+- `GET /api/contracts/{id}/analysis` - Get contract analysis
+- `POST /api/contracts/{id}/question` - Ask questions about contract
+- `POST /api/contracts/search` - Search contracts
+- `GET /api/contracts/{id}/similar` - Find similar contracts
+
+#### Batch Operations
+- `POST /api/contracts/batch` - Start batch processing
+- `GET /api/batch/{id}/status` - Get batch status
+
+#### File Operations
+- `GET /api/contracts/{id}/download` - Download original file
+- `GET /api/contracts/{id}/export` - Export analysis
+
+#### Real-time Updates
+- `WS /ws/{user_id}` - WebSocket for real-time notifications
+
+#### Analytics
+- `GET /api/analytics/overview` - Processing metrics
+- `GET /api/analytics/user` - User analytics
+- `GET /api/analytics/trends` - Processing trends
+
+### Authentication
+
+The API uses JWT tokens for authentication. For development, use the token `dev-token`.
+
+Production deployment should integrate with Firebase Auth or another authentication provider.
+
+### Frontend Integration
+
+The API is designed to work with modern frontend frameworks:
+
+```javascript
+// Example: Upload and process contract
+const formData = new FormData();
+formData.append('file', contractFile);
+
+const response = await fetch('/api/contracts/upload', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer your-jwt-token'
+  },
+  body: formData
+});
+
+const result = await response.json();
+console.log('Contract uploaded:', result.contract_id);
+
+// WebSocket for real-time updates
+const ws = new WebSocket('ws://localhost:8000/ws/user-id');
+ws.onmessage = (event) => {
+  const update = JSON.parse(event.data);
+  if (update.type === 'processing_update') {
+    console.log('Processing progress:', update.data.progress);
+  }
+};
+```
+
 ## Configuration
 
 1. Set up Firebase project with Storage and Firestore
