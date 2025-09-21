@@ -3,247 +3,167 @@ RAG (Retrieval Augmented Generation) module for contract analysis and generation
 """
 import logging
 from typing import List, Dict, Any, Optional
+import os
+
 try:
-    from langchain_community.llms import VertexAI
-    from langchain.chains import RetrievalQA
-    from langchain.prompts import PromptTemplate
-    from google.cloud import aiplatform
+    from google import genai
 except ImportError:
-    # Mock classes for testing when dependencies are not available
-    class VertexAI:
-        def __init__(self, *args, **kwargs):
-            pass
-        def __call__(self, prompt):
-            return "Mock response"
-    
-    class RetrievalQA:
-        pass
-    
-    class PromptTemplate:
-        pass
-    
-    class aiplatform:
-        @staticmethod
-        def init(*args, **kwargs):
-            pass
+    # Mock class for testing when dependencies are not available
+    class genai:
+        class Client:
+            def __init__(self):
+                pass
+            
+            class models:
+                @staticmethod
+                def generate_content(model, contents):
+                    class MockResponse:
+                        text = f"Mock response: {contents[:100]}..."
+                    return MockResponse()
+
 from models.contract import Clause, ProcessedContract
 
 
-class ContractRAGGenerator:
-    """Handles retrieval augmented generation for contract analysis using Vertex AI."""
+class RAGGenerator:
+    """Handles retrieval augmented generation for contract analysis."""
     
-    def __init__(
-        self,
-        embedder,  # ContractEmbedder instance
-        project_id: str,
-        location: str = "us-central1",
-        model_name: str = "text-bison@001"
-    ):
-        """Initialize RAG generator with embedder and Vertex AI."""
-        self.embedder = embedder
-        self.project_id = project_id
-        self.location = location
-        self.model_name = model_name
-        
-        # TODO: Initialize Vertex AI
-        aiplatform.init(project=project_id, location=location)
-        
-        # TODO: Initialize LangChain with Vertex AI
-        self.llm = VertexAI(
-            model_name=model_name,
-            project=project_id,
-            location=location,
-            max_output_tokens=1024,
-            temperature=0.1
-        )
-        
+    def __init__(self):
+        """Initialize RAG generator."""
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize Gemini client with API key
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            self.client = genai.Client(api_key=api_key)
+        else:
+            # Use mock client for testing
+            self.client = genai.Client() if hasattr(genai, 'Client') else None
+        
+        # Initialize embedder
+        from pipeline.embedder import ContractEmbedder
+        self.embedder = ContractEmbedder(
+            supabase_url=os.getenv("SUPABASE_URL"),
+            supabase_key=os.getenv("SUPABASE_KEY")
+        )
     
-    def generate_summary(self, contract: ProcessedContract) -> str:
-        """
-        Generate plain-language summary of contract.
-        
-        Args:
-            contract: Processed contract object
-            
-        Returns:
-            Human-readable contract summary
-        """
-        # TODO: Extract key clauses for summary
-        key_clauses = self._identify_key_clauses(contract)
-        
-        # TODO: Create prompt for LLM
-        prompt = self._create_summary_prompt(key_clauses, contract.metadata)
-        
-        # TODO: Generate summary using LLM
-        summary = self._generate_with_llm(prompt)
-        
-        return summary
-    
-    def analyze_risks(self, contract: ProcessedContract) -> List[Dict[str, Any]]:
-        """
-        Analyze contract for potential risks and issues.
-        
-        Args:
-            contract: Processed contract object
-            
-        Returns:
-            List of identified risks with severity levels
-        """
-        # TODO: Retrieve similar risk clauses from knowledge base
-        # TODO: Analyze each clause for potential issues
-        # TODO: Generate risk assessments using LLM
-        # TODO: Categorize and prioritize risks
-        pass
-    
-    def suggest_redlines(self, contract: ProcessedContract) -> List[Dict[str, Any]]:
-        """
-        Suggest contract redlines and modifications.
-        
-        Args:
-            contract: Processed contract object
-            
-        Returns:
-            List of suggested modifications with rationale
-        """
-        # TODO: Compare clauses with standard templates
-        # TODO: Identify problematic language
-        # TODO: Generate improvement suggestions
-        # TODO: Provide rationale for each suggestion
-        pass
-    
-    def answer_questions(self, question: str, contract: ProcessedContract = None, contract_id: str = None) -> str:
-        """
-        Answer questions using enhanced RAG with hybrid search.
-        
-        Args:
-            question: User question
-            contract: Processed contract object (optional)
-            contract_id: Contract ID to search in database (optional)
-            
-        Returns:
-            Answer based on contract content
-        """
+    def query_contract(self, contract_id: str, question: str) -> str:
+        """Answer questions about a specific contract using RAG."""
         try:
-            if contract:
-                # Use contract clauses directly
-                relevant_clauses = self._retrieve_relevant_clauses(question, contract)
-            elif contract_id:
-                # Search specific contract in database
-                results = self.embedder.search_similar_clauses(
-                    query_text=question,
-                    limit=5,
-                    contract_id=contract_id,
-                    use_hybrid=True
-                )
-                relevant_clauses = [Clause(id=r['clause_id'], text=r['text']) for r in results]
-            else:
-                # Search across all contracts
-                results = self.embedder.search_similar_clauses(
-                    query_text=question,
-                    limit=5,
-                    use_hybrid=True
-                )
-                relevant_clauses = [Clause(id=r['clause_id'], text=r['text']) for r in results]
-            
-            # Create context-aware prompt
-            prompt = self._create_qa_prompt(question, relevant_clauses)
-            
-            # Generate answer using LLM
-            answer = self._generate_with_llm(prompt)
-            
-            return answer
-        except Exception as e:
-            self.logger.error(f"Question answering failed: {e}")
-            return "I'm sorry, I couldn't process your question at this time."
-    
-    def _identify_key_clauses(self, contract: ProcessedContract) -> List[Clause]:
-        """Identify the most important clauses for summary generation."""
-        # TODO: Define importance criteria:
-        # - Payment terms
-        # - Term and termination
-        # - Governing law
-        # - Liability and indemnification
-        # - Intellectual property
-        pass
-    
-    def _retrieve_relevant_clauses(
-        self, 
-        query: str, 
-        contract: ProcessedContract,
-        top_k: int = 5
-    ) -> List[Clause]:
-        """Retrieve most relevant clauses using hybrid search."""
-        if not self.embedder.supabase:
-            return contract.clauses[:top_k]  # Fallback to first clauses
-        
-        try:
-            # Use hybrid search for better retrieval
+            # Search for relevant clauses
             results = self.embedder.search_similar_clauses(
-                query_text=query,
-                limit=top_k,
+                query_text=question,
+                limit=5,
+                contract_id=contract_id,
                 use_hybrid=True
             )
             
-            # Convert results back to Clause objects
-            relevant_clauses = []
-            for result in results:
-                clause = Clause(
-                    id=result['clause_id'],
-                    text=result['text'],
-                    metadata=result.get('metadata', {})
-                )
-                relevant_clauses.append(clause)
+            if not results:
+                return "No relevant information found in the contract."
             
-            return relevant_clauses
+            # Create context from relevant clauses
+            context = "\n\n".join([result['text'] for result in results])
+            
+            # Create prompt
+            prompt = f"""Based on the following contract clauses, answer the question:
+
+Contract Clauses:
+{context}
+
+Question: {question}
+
+Answer: Provide a clear, accurate answer based only on the contract clauses above. If the information is not available in the clauses, say so."""
+            
+            # Generate answer using Gemini
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=prompt
+            )
+            return response.text
+            
         except Exception as e:
-            self.logger.error(f"Failed to retrieve relevant clauses: {e}")
-            return contract.clauses[:top_k]  # Fallback
+            self.logger.error(f"Query failed: {e}")
+            return "I'm sorry, I couldn't process your question."
     
-    def _create_summary_prompt(
-        self, 
-        key_clauses: List[Clause], 
-        metadata: Any
-    ) -> str:
-        """Create prompt for contract summary generation."""
-        # TODO: Build structured prompt with:
-        # - Contract metadata
-        # - Key clauses
-        # - Instructions for plain-language summary
-        # - Specific formatting requirements
-        pass
-    
-    def _create_qa_prompt(self, question: str, clauses: List[Clause]) -> str:
-        """Create prompt for question answering."""
-        # TODO: Build prompt with:
-        # - User question
-        # - Relevant contract clauses
-        # - Instructions for accurate answering
-        # - Guidelines for citing sources
-        pass
-    
-    def _generate_with_llm(self, prompt: str, max_tokens: int = 1000) -> str:
-        """Generate text using configured LLM."""
-        # TODO: Generate text using Vertex AI through LangChain
-        # TODO: Implement retry logic and error handling
-        # TODO: Apply content filtering and safety checks
-        # TODO: Log generation metrics
-        
+    def generate_summary(self, contract: ProcessedContract) -> str:
+        """Generate a summary of the contract."""
         try:
-            response = self.llm(prompt)
-            return response
+            # Extract key sections
+            key_sections = []
+            for section in contract.sections[:5]:  # First 5 sections
+                for clause in section.clauses[:2]:  # First 2 clauses per section
+                    key_sections.append(clause.text)
+            
+            context = "\n\n".join(key_sections)
+            
+            prompt = f"""Summarize the following contract in plain language:
+
+Contract Content:
+{context}
+
+Summary: Provide a concise summary covering the main points, parties involved, key obligations, and important terms."""
+            
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=prompt
+            )
+            return response.text
+            
         except Exception as e:
-            self.logger.error(f"LLM generation error: {str(e)}")
-            return "Error generating response"
+            self.logger.error(f"Summary generation failed: {e}")
+            return "Unable to generate summary."
     
-    def negotiate_terms(
-        self, 
-        contract: ProcessedContract,
-        negotiation_points: List[str]
-    ) -> List[Dict[str, Any]]:
-        """Generate negotiation strategies and alternative language."""
-        # TODO: Analyze each negotiation point
-        # TODO: Retrieve comparable clauses from knowledge base
-        # TODO: Generate alternative language options
-        # TODO: Assess negotiation leverage and priorities
-        pass
+    def analyze_risks(self, contract: ProcessedContract) -> List[Dict[str, Any]]:
+        """Analyze contract for potential risks."""
+        try:
+            risks = []
+            
+            # Analyze each section for risks
+            for section in contract.sections:
+                for clause in section.clauses:
+                    if any(keyword in clause.text.lower() for keyword in 
+                          ['liability', 'penalty', 'termination', 'breach', 'damages']):
+                        
+                        prompt = f"""Analyze this contract clause for potential risks:
+
+Clause: {clause.text}
+
+Risk Analysis: Identify any potential risks, their severity (High/Medium/Low), and brief explanation."""
+                        
+                        response = self.client.models.generate_content(
+                            model="gemini-2.0-flash-exp",
+                            contents=prompt
+                        )
+                        analysis = response.text
+                        
+                        risks.append({
+                            'clause_id': clause.id,
+                            'clause_text': clause.text[:200] + "...",
+                            'risk_analysis': analysis,
+                            'severity': 'Medium'  # Default
+                        })
+            
+            return risks[:10]  # Return top 10 risks
+            
+        except Exception as e:
+            self.logger.error(f"Risk analysis failed: {e}")
+            return []
+    
+    def search_similar_contracts(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Search for similar contracts or clauses."""
+        try:
+            results = self.embedder.search_similar_clauses(
+                query_text=query,
+                limit=limit,
+                use_hybrid=True
+            )
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Search failed: {e}")
+            return []
+
+
+class ContractRAGGenerator(RAGGenerator):
+    """Legacy class name for backward compatibility."""
+    pass
