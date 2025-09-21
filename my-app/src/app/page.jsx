@@ -9,7 +9,7 @@ import Beams from '@/components/Beams';
 
 const LandingPage = () => {
   return (
-    <div className="relative min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="relative min-h-screen font-sans">
       
       {/* Beams Background */}
       <div className="absolute inset-0 -z-10">
