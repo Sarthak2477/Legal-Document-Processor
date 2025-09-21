@@ -1,53 +1,38 @@
-# OCR and PDF processing
-tesseract
-pytesseract
-pdfplumber
-PyMuPDF
-Pillow
+# Core API Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
 
-# NLP and text processing
-spacy
-langchain
-langchain-google-vertexai
-sentence-transformers
-torch
-numpy
-pandas
+# Data Models and Validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
 
-# Layout analysis
-layoutparser[ocr]
-detectron2
+# OCR and PDF Processing
+pytesseract==0.3.10
+pdfplumber==0.10.3
+Pillow==10.1.0
 
-# Vector storage and database
-supabase
-pgvector
-psycopg2-binary
+# NLP and Embeddings
+spacy==3.7.2
+sentence-transformers==2.2.2
+numpy==1.24.3
 
-# Firebase and Google Cloud
-firebase-admin
-google-cloud-firestore
-google-cloud-storage
-google-cloud-functions-framework
-google-cloud-aiplatform
+# Google AI (Gemini)
+google-generativeai==0.3.2
 
-# Machine Learning and AI
-google-cloud-aiplatform
-huggingface-hub
-transformers
+# Vector Database
+supabase==2.0.2
+
+# Environment and Configuration
+python-dotenv==1.0.0
 
 # Utilities
-python-dotenv
-pydantic
-typer
-rich
-loguru
-functions-framework
+typing-extensions==4.8.0
+requests==2.31.0
 
-# API Dependencies
-fastapi
-uvicorn[standard]
-aiosqlite
-python-multipart
-python-jose[cryptography]
-passlib[bcrypt]
-websockets
+# Optional: Language Detection
+langdetect==1.0.9
+
+# Development and Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
