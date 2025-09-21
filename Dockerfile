@@ -16,8 +16,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install spaCy model matching your spacy version (3.7.2)
-RUN pip install --no-cache-dir https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.2/en_core_web_sm-3.7.2.tar.gz
+# Download spaCy model
+RUN python -m spacy download en_core_web_sm
 
 # --- Final Stage ---
 FROM python:3.11-slim-bookworm as final
