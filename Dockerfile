@@ -16,8 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy model
-RUN python -m spacy download en_core_web_sm
+# Skip spaCy model download in Docker build - will be handled at runtime
 
 # --- Final Stage ---
 FROM python:3.11-slim-bookworm as final
@@ -47,4 +46,4 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH=/home/app
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 
-CMD ["python", "run_api.py"]
+CMD ["python", "startup.py"]
