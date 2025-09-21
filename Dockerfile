@@ -1,17 +1,11 @@
 # --- Builder Stage ---
-# This stage installs dependencies and builds our Python virtual environment.
 FROM python:3.11-slim as builder
 
-# Set environment variables to prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies needed for building Python packages and for the app itself
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    poppler-utils \
-    # The rest are runtime dependencies, so they go in the final stage
-    && apt-get clean \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a virtual environment
@@ -29,20 +23,21 @@ RUN python -m spacy download en_core_web_sm
 
 
 # --- Final Stage ---
-# This stage creates the final, lean image for running the application.
 FROM python:3.11-slim as final
 
-# Install only the necessary RUNTIME system dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies in separate steps for better error handling
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
+    tesseract-ocr-eng \
     poppler-utils \
-    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libgomp1 \
-    && apt-get clean \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group for security
