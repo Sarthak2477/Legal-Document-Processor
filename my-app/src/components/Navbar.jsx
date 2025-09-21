@@ -68,7 +68,7 @@ const Navbar = ({ hideLaunchButton = false }) => {
               onClick={scrollToTop}
               className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent hover:from-blue-400 hover:to-indigo-400 transition-all duration-300"
             >
-              Legalyze 
+              Legalese  
             </a>
           </div>
 
