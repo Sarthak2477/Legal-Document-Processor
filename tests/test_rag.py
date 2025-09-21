@@ -14,15 +14,41 @@ sys.path.insert(0, str(project_root))
 
 # Setup logging to file
 log_file = Path(__file__).parent / f"test_rag_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler()
-    ]
-)
+
+# Create file handler with immediate flush
+file_handler = logging.FileHandler(log_file, mode='w')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+# Create console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+# Setup logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Force immediate write function
+def log_and_flush(message, level='info'):
+    if level == 'info':
+        logger.info(message)
+    elif level == 'error':
+        logger.error(message)
+    elif level == 'warning':
+        logger.warning(message)
+    
+    # Force flush to file
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.flush()
+    
+    # Also write directly to file as backup
+    with open(log_file, 'a', encoding='utf-8') as f:
+        f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {level.upper()} - {message}\n")
+        f.flush()
 
 from pipeline.rag_generator import RAGGenerator
 from models.contract import ProcessedContract, ContractSection, Clause
@@ -32,11 +58,11 @@ from datetime import datetime
 @pytest.fixture
 def rag_generator():
     """Create RAG generator instance for testing."""
-    logger.info("Creating RAG generator instance for testing")
+    log_and_flush("Creating RAG generator instance for testing")
     # Set mock API key for testing if not set
     if not os.getenv("GEMINI_API_KEY"):
         os.environ["GEMINI_API_KEY"] = "test_key"
-        logger.info("Using mock API key for testing")
+        log_and_flush("Using mock API key for testing")
     return RAGGenerator()
 
 
@@ -93,10 +119,10 @@ def sample_contract():
 
 def test_gemini_connection():
     """Test Gemini API connection."""
-    logger.info("=== Testing Gemini API Connection ===")
+    log_and_flush("=== Testing Gemini API Connection ===")
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        logger.warning("GEMINI_API_KEY not set - skipping test")
+        log_and_flush("GEMINI_API_KEY not set - skipping test", 'warning')
         pytest.skip("GEMINI_API_KEY not set")
     
     try:
@@ -106,75 +132,75 @@ def test_gemini_connection():
             model="gemini-2.0-flash-exp",
             contents="Test"
         )
-        logger.info(f"Gemini response: {response.text}")
+        log_and_flush(f"Gemini response: {response.text}")
         assert response.text is not None
-        logger.info("✅ Gemini connection successful")
+        log_and_flush("✅ Gemini connection successful")
     except ImportError:
-        logger.warning("Google GenAI not available")
+        log_and_flush("Google GenAI not available", 'warning')
         pytest.skip("Google GenAI not available")
     except Exception as e:
-        logger.error(f"❌ Gemini connection failed: {e}")
+        log_and_flush(f"❌ Gemini connection failed: {e}", 'error')
         pytest.fail(f"Gemini connection failed: {e}")
 
 
 def test_rag_generator_init(rag_generator):
     """Test RAG generator initialization."""
-    logger.info("=== Testing RAG Generator Initialization ===")
+    log_and_flush("=== Testing RAG Generator Initialization ===")
     assert rag_generator is not None
     assert hasattr(rag_generator, 'client')
     assert hasattr(rag_generator, 'embedder')
-    logger.info("✅ RAG generator initialized successfully")
+    log_and_flush("✅ RAG generator initialized successfully")
 
 
 def test_query_contract(rag_generator):
     """Test contract query functionality."""
-    logger.info("=== Testing Contract Query ===")
+    log_and_flush("=== Testing Contract Query ===")
     question = "What is confidential information?"
-    logger.info(f"Query: {question}")
-    result = rag_generator.query_contract("contract_training", question)
-    logger.info(f"Result: {result[:200]}...")
+    log_and_flush(f"Query: {question}")
+    result = rag_generator.query_contract(question)
+    log_and_flush(f"Result: {result[:200]}...")
     assert isinstance(result, str)
     assert len(result) > 0
-    logger.info("✅ Contract query successful")
+    log_and_flush("✅ Contract query successful")
 
 
 def test_generate_summary(rag_generator, sample_contract):
     """Test summary generation."""
-    logger.info("=== Testing Summary Generation ===")
+    log_and_flush("=== Testing Summary Generation ===")
     summary = rag_generator.generate_summary(sample_contract)
-    logger.info(f"Generated summary: {summary}")
+    log_and_flush(f"Generated summary: {summary}")
     assert isinstance(summary, str)
     assert len(summary) > 0
-    logger.info("✅ Summary generation successful")
+    log_and_flush("✅ Summary generation successful")
 
 
 def test_analyze_risks(rag_generator, sample_contract):
     """Test risk analysis."""
-    logger.info("=== Testing Risk Analysis ===")
+    log_and_flush("=== Testing Risk Analysis ===")
     risks = rag_generator.analyze_risks(sample_contract)
-    logger.info(f"Found {len(risks)} risks")
+    log_and_flush(f"Found {len(risks)} risks")
     for i, risk in enumerate(risks):
-        logger.info(f"Risk {i+1}: {risk.get('risk_analysis', 'No analysis')[:100]}...")
+        log_and_flush(f"Risk {i+1}: {risk.get('risk_analysis', 'No analysis')[:100]}...")
     assert isinstance(risks, list)
     # Should find at least one risk (liability clause)
     assert len(risks) >= 1
     if risks:
         assert 'clause_id' in risks[0]
         assert 'risk_analysis' in risks[0]
-    logger.info("✅ Risk analysis successful")
+    log_and_flush("✅ Risk analysis successful")
 
 
 def test_search_similar_contracts(rag_generator):
     """Test similar contract search."""
-    logger.info("=== Testing Similar Contract Search ===")
+    log_and_flush("=== Testing Similar Contract Search ===")
     query = "confidentiality agreement"
-    logger.info(f"Search query: {query}")
+    log_and_flush(f"Search query: {query}")
     results = rag_generator.search_similar_contracts(query, limit=3)
-    logger.info(f"Found {len(results)} similar contracts")
+    log_and_flush(f"Found {len(results)} similar contracts")
     for i, result in enumerate(results):
-        logger.info(f"Result {i+1}: {result.get('text', 'No text')[:100]}...")
+        log_and_flush(f"Result {i+1}: {result.get('text', 'No text')[:100]}...")
     assert isinstance(results, list)
-    logger.info("✅ Similar contract search successful")
+    log_and_flush("✅ Similar contract search successful")
 
 
 @pytest.mark.parametrize("question", [
@@ -184,34 +210,34 @@ def test_search_similar_contracts(rag_generator):
 ])
 def test_multiple_queries(rag_generator, question):
     """Test multiple different queries."""
-    logger.info(f"=== Testing Query: {question} ===")
-    result = rag_generator.query_contract("contract_training", question)
-    logger.info(f"Query result: {result[:150]}...")
+    log_and_flush(f"=== Testing Query: {question} ===")
+    result = rag_generator.query_contract(question)
+    log_and_flush(f"Query result: {result[:150]}...")
     assert isinstance(result, str)
     assert len(result) > 0
-    logger.info(f"✅ Query '{question}' successful")
+    log_and_flush(f"✅ Query '{question}' successful")
 
 
 def test_empty_query(rag_generator):
     """Test handling of empty queries."""
-    logger.info("=== Testing Empty Query ===")
-    result = rag_generator.query_contract("contract_training", "")
-    logger.info(f"Empty query result: {result}")
+    log_and_flush("=== Testing Empty Query ===")
+    result = rag_generator.query_contract("")
+    log_and_flush(f"Empty query result: {result}")
     assert isinstance(result, str)
-    logger.info("✅ Empty query handled successfully")
+    log_and_flush("✅ Empty query handled successfully")
 
 
-def test_nonexistent_contract(rag_generator):
-    """Test query on non-existent contract."""
-    logger.info("=== Testing Non-existent Contract Query ===")
-    result = rag_generator.query_contract("nonexistent_contract", "What is this?")
-    logger.info(f"Non-existent contract result: {result}")
+def test_specific_contract_query(rag_generator):
+    """Test query on specific contract."""
+    log_and_flush("=== Testing Specific Contract Query ===")
+    result = rag_generator.query_specific_contract("contract_training", "What is this?")
+    log_and_flush(f"Specific contract result: {result}")
     assert isinstance(result, str)
-    logger.info("✅ Non-existent contract query handled successfully")
+    log_and_flush("✅ Specific contract query handled successfully")
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting RAG tests - Results will be saved to: {log_file}")
+    log_and_flush(f"Starting RAG tests - Results will be saved to: {log_file}")
     pytest.main([__file__, "-v"])
-    logger.info(f"Test results saved to: {log_file}")
+    log_and_flush(f"Test results saved to: {log_file}")
     print(f"\n📄 Test results saved to: {log_file}")

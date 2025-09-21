@@ -3,7 +3,7 @@ FastAPI main application for contract processing.
 """
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from api.routers import contracts, search, health, upload
+from api.routers import contracts, search, health, upload, rag
 
 app = FastAPI(
     title="Contract Processing API",
@@ -24,6 +24,7 @@ app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(upload.router, prefix="/upload", tags=["upload"])
 app.include_router(contracts.router, prefix="/contracts", tags=["contracts"])
 app.include_router(search.router, prefix="/search", tags=["search"])
+app.include_router(rag.router, prefix="/rag", tags=["rag"])
 
 @app.get("/")
 async def root():

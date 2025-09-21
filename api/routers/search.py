@@ -49,7 +49,7 @@ async def rag_query(request: RAGRequest):
         from pipeline.rag_generator import RAGGenerator
         
         rag_generator = RAGGenerator()
-        answer = rag_generator.query_contract(request.contract_id, request.question)
+        answer = rag_generator.query_contract(request.question)
         
         return {"answer": answer, "contract_id": request.contract_id}
     except Exception as e:

@@ -53,12 +53,7 @@ class ContractPipeline:
         )
         
         # TODO: Initialize RAG generator
-        self.rag_generator = ContractRAGGenerator(
-            embedder=self.embedder,
-            project_id=settings.VERTEX_AI_PROJECT,
-            location=settings.VERTEX_AI_LOCATION,
-            model_name=settings.VERTEX_AI_MODEL
-        )
+        self.rag_generator = ContractRAGGenerator()
         
         # TODO: Initialize Firestore manager
         self.firestore_manager = FirestoreManager()
