@@ -1,3 +1,5 @@
+// app/page.js (or your LandingPage file)
+
 "use client";
 import Navbar from '@/components/Navbar';
 import HeroSection from '@/components/Hero-section';
@@ -19,13 +21,25 @@ const LandingPage = () => {
       {/* Page Content */}
       <Navbar />
       <main>
-        <HeroSection />
-        <FeaturesSection />
-        <FeaturesShowcase />
-        <IntroductionSection />  
-       {/* <Testimonials /> */}
+        {/* The "Home" link will scroll here */}
+        <section id="home">
+          <HeroSection />
+        </section>
+
+        {/* The "Features" link will scroll here */}
+        <section id="features">
+          <FeaturesSection />
+          <FeaturesShowcase />
+        </section>
+
+        {/* The "About" link will scroll here */}
+        <section id="about">
+          <IntroductionSection />
+        </section>
+        
+        {/* <Testimonials /> */}
       </main>
-       <Footer /> 
+      <Footer /> 
     </div>
   );
 };
