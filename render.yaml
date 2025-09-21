@@ -5,8 +5,7 @@ services:
     env: python
     buildCommand: |
       pip install --upgrade pip
-      pip install -r requirements.txt
-      python -m spacy download en_core_web_sm
+      pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
@@ -18,8 +17,8 @@ services:
         sync: false
       - key: TESSERACT_PATH
         value: /usr/bin/tesseract
-      - key: SPACY_MODEL
-        value: en_core_web_sm
+      - key: PYTHON_VERSION
+        value: 3.11.0
       - key: EMBEDDING_MODEL
         value: sentence-transformers/all-MiniLM-L6-v2
       - key: DATABASE_URL

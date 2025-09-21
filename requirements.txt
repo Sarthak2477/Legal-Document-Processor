@@ -1,38 +1,27 @@
 # Core API Framework
 fastapi==0.104.1
-uvicorn[standard]==0.24.0
+uvicorn==0.24.0
 python-multipart==0.0.6
 
-# Data Models and Validation
+# Data Models
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
-# OCR and PDF Processing
+# PDF Processing (lightweight)
 pytesseract==0.3.10
 pdfplumber==0.10.3
 Pillow==10.1.0
 
-# NLP and Embeddings
-spacy==3.7.2
-sentence-transformers==2.2.2
+# Minimal NLP
 numpy==1.24.3
 
-# Google AI (Gemini)
+# Google AI
 google-generativeai==0.3.2
 
-# Vector Database
+# Database
 supabase==2.0.2
-
-# Environment and Configuration
-python-dotenv==1.0.0
+psycopg2-binary==2.9.7
 
 # Utilities
-typing-extensions==4.8.0
+python-dotenv==1.0.0
 requests==2.31.0
-
-# Optional: Language Detection
-langdetect==1.0.9
-
-# Development and Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
