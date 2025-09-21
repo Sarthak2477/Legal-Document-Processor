@@ -1,44 +1,49 @@
-FROM python:3.11-slim
+# --- Builder Stage ---
+FROM python:3.11-slim-bookworm as builder
 
-# Set working directory
-WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV VIRTUAL_ENV=/opt/venv
+RUN python -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Skip spaCy model download in Docker build - will be handled at runtime
+
+# --- Final Stage ---
+FROM python:3.11-slim-bookworm as final
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install ONLY the packages your backend actually needs
+RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
     poppler-utils \
-    libgl1-mesa-glx \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libgomp1 \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN groupadd --system app && useradd --system --gid app app
+USER app
+WORKDIR /home/app
 
-# Download spaCy model
-RUN python -m spacy download en_core_web_sm
-
-# Copy application code
+COPY --from=builder /opt/venv /opt/venv
 COPY . .
 
-# Create necessary directories
 RUN mkdir -p uploads outputs exports logs
 
-# Set environment variables
-ENV PYTHONPATH=/app
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH=/home/app
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run the application
-CMD ["python", "run_api.py"]
+CMD ["python", "startup.py"]
