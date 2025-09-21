@@ -413,35 +413,46 @@ class ContractRAGGenerator:
             all_data = storage_manager._load_data()
             all_clauses = []
             
+            self.logger.info(f"DEBUG: Found {len(all_data)} contracts in storage")
+            
             for contract_id, contract_info in all_data.items():
                 processed_data = contract_info.get('processed_data', {})
+                
                 if processed_data.get('success') and processed_data.get('contract'):
-                    contract_dict = processed_data['contract']
-                    clauses_data = contract_dict.get('clauses', [])
+                    contract_data = processed_data['contract']
                     
-                    for clause_dict in clauses_data:
-                        clause_text = clause_dict.get('text', '')
-                        if clause_text and len(clause_text) > 20:  # Only meaningful clauses
-                            all_clauses.append(clause_text)
+                    # Skip string contracts, use dict contracts
+                    if isinstance(contract_data, dict):
+                        clauses_data = contract_data.get('clauses', [])
+                        
+                        for clause_dict in clauses_data:
+                            if isinstance(clause_dict, dict):
+                                clause_text = clause_dict.get('text', '')
+                                if clause_text and len(clause_text) > 50:
+                                    all_clauses.append(clause_text)
+                                    if len(all_clauses) >= 10:  # Limit to 10 clauses
+                                        break
+                        
+                        if len(all_clauses) >= 10:
+                            break
+            
+            self.logger.info(f"Total clauses found: {len(all_clauses)}")
             
             if not all_clauses:
                 return "No contract data found. Please upload and process contracts first."
             
-            # Use first 10 clauses as context
-            context = "\n\n".join(all_clauses[:10])
+            # Use first 3 clauses as context
+            context = "\n\n".join(all_clauses[:3])
             
             # Create prompt
-            prompt = f"""Answer this question based on the contract clauses:
-
-Question: {question}
+            prompt = f"""Based on the following contract clauses, answer the question:
 
 Contract Clauses:
 {context}
 
-Rules:
-- Answer based ONLY on the provided clauses
-- If information is not in the clauses, say "Not found in contract clauses"
-- Be direct and concise
+Question: {question}
+
+Answer based only on the contract clauses above. If the information is not available, say "Not found in contract clauses".
 
 Answer:"""
             
@@ -451,6 +462,47 @@ Answer:"""
         except Exception as e:
             self.logger.error(f"Query failed: {e}")
             return "I'm sorry, I couldn't process your question."
+    
+    def search_similar_contracts(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Search for similar contracts or clauses."""
+        try:
+            # Get all stored contracts from local storage
+            from pipeline.local_storage import LocalStorageManager
+            storage_manager = LocalStorageManager()
+            
+            all_data = storage_manager._load_data()
+            results = []
+            
+            for contract_id, contract_info in all_data.items():
+                processed_data = contract_info.get('processed_data', {})
+                
+                if processed_data.get('success') and processed_data.get('contract'):
+                    contract_data = processed_data['contract']
+                    
+                    if isinstance(contract_data, dict):
+                        clauses_data = contract_data.get('clauses', [])
+                        
+                        for clause_dict in clauses_data:
+                            if isinstance(clause_dict, dict):
+                                clause_text = clause_dict.get('text', '')
+                                
+                                # Simple keyword matching
+                                if query.lower() in clause_text.lower():
+                                    results.append({
+                                        'contract_id': contract_id,
+                                        'clause_id': clause_dict.get('id', ''),
+                                        'text': clause_text,
+                                        'similarity': 0.8  # Mock similarity score
+                                    })
+                                    
+                                    if len(results) >= limit:
+                                        return results
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Search failed: {e}")
+            return []
     
     def answer_questions(self, question: str, contract: ProcessedContract = None, contract_id: str = None) -> str:
         """

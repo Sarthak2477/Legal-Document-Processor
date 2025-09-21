@@ -65,17 +65,51 @@ async def generate_summary(request: SummaryRequest):
 async def analyze_risks(request: RiskAnalysisRequest):
     """Analyze contract risks."""
     try:
-        from pipeline.rag_generator import ContractRAGGenerator
         from pipeline.local_storage import LocalStorageManager
         
         storage_manager = LocalStorageManager()
-        contract = storage_manager.get_contract(request.contract_id)
+        contract_data = storage_manager.get_contract(request.contract_id)
         
-        if not contract:
+        if not contract_data:
             raise HTTPException(status_code=404, detail="Contract not found")
         
-        rag_generator = ContractRAGGenerator()
-        risks = rag_generator.analyze_risks(contract)
+        # Get processed contract data
+        processed_data = contract_data.get('processed_data', {})
+        if not processed_data.get('success') or not processed_data.get('contract'):
+            return {"risks": [], "contract_id": request.contract_id, "message": "No processed contract data"}
+        
+        contract_dict = processed_data['contract']
+        if not isinstance(contract_dict, dict):
+            return {"risks": [], "contract_id": request.contract_id, "message": "Invalid contract format"}
+        
+        # Simple risk analysis based on keywords
+        risks = []
+        clauses_data = contract_dict.get('clauses', [])
+        
+        risk_keywords = {
+            'liability': ['liability', 'damages', 'indemnify', 'hold harmless'],
+            'payment': ['payment', 'fee', 'invoice', 'compensation'],
+            'termination': ['terminate', 'termination', 'end', 'expire'],
+            'confidentiality': ['confidential', 'proprietary', 'non-disclosure'],
+            'intellectual_property': ['intellectual property', 'copyright', 'patent', 'license'],
+            'governing_law': ['governing law', 'jurisdiction', 'court', 'legal']
+        }
+        
+        for clause_dict in clauses_data:
+            if isinstance(clause_dict, dict):
+                clause_text = clause_dict.get('text', '').lower()
+                
+                for risk_type, keywords in risk_keywords.items():
+                    for keyword in keywords:
+                        if keyword in clause_text:
+                            risks.append({
+                                'risk_type': risk_type,
+                                'severity': 'high' if risk_type == 'liability' else 'medium',
+                                'description': f'Found {risk_type} risk: {keyword}',
+                                'clause_id': clause_dict.get('id', ''),
+                                'clause_text': clause_dict.get('text', '')[:200] + '...'
+                            })
+                            break
         
         return {"risks": risks, "contract_id": request.contract_id}
     except Exception as e:
@@ -139,20 +173,9 @@ async def answer_questions(request: QueryRequest):
     """Answer questions about contracts (legacy endpoint)."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import LocalStorageManager
         
-        if request.contract_id:
-            storage_manager = LocalStorageManager()
-            contract = storage_manager.get_contract(request.contract_id)
-            
-            if not contract:
-                raise HTTPException(status_code=404, detail="Contract not found")
-            
-            rag_generator = ContractRAGGenerator()
-            answer = rag_generator.answer_questions(request.question, contract, request.contract_id)
-        else:
-            rag_generator = ContractRAGGenerator()
-            answer = rag_generator.answer_questions(request.question)
+        rag_generator = ContractRAGGenerator()
+        answer = rag_generator.query_contract(request.question, request.contract_id)
         
         return {"answer": answer, "question": request.question}
     except Exception as e:
