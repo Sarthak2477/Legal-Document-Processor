@@ -51,8 +51,18 @@ const ChatInterface = ({
                 throw new Error(`Invalid file type. Please use PDF, DOC, DOCX, or TXT.`);
             }
 
-            // If validation passes
+            // If validation passes - simulate successful upload
             setUploadError(null);
+            
+            // Add upload success message
+            const uploadMessage = {
+                sender: 'ai',
+                text: `✅ Successfully uploaded "${file.name}". I can now analyze this contract and answer specific questions about it. Try asking me to summarize it or find potential risks!`,
+                timestamp: new Date().toISOString()
+            };
+            
+            setMessages(prev => [...prev, uploadMessage]);
+            
             if (onFileUpload) {
                 onFileUpload(file);
             }
@@ -88,11 +98,28 @@ const ChatInterface = ({
         setUserInput('');
         setIsAiResponding(true);
 
-        // --- SIMULATE API CALL ---
+        // --- SIMULATE API CALL WITH REALISTIC RESPONSES ---
         await new Promise(resolve => setTimeout(resolve, 1500));
-        let aiResponse = documentLoaded
-            ? `Regarding your document, here is a simulated answer to: "${currentQuestion}".`
-            : `As a general legal AI, here is a simulated answer to: "${currentQuestion}".`;
+        
+        const mockResponses = {
+            'summarize': 'This contract is a Non-Disclosure Agreement between UNHCR and a bidder. Key terms include: confidentiality obligations, 3-month return period, arbitration for disputes, and indemnification clauses. The agreement governs information sharing for RFP/2014/620.',
+            'risks': 'I identified 3 potential risks: 1) High liability exposure in indemnification clause (Section 6), 2) Broad confidentiality definition may restrict business operations, 3) Mandatory arbitration limits legal recourse options.',
+            'payment': 'This document does not contain specific payment terms. It appears to be a preliminary NDA for the bidding process. Payment terms would typically be outlined in the main service contract after bid selection.',
+            'parties': 'The parties are: (1) UNHCR (United Nations High Commissioner for Refugees) located at 94 rue de Montbrillant, Geneva, Switzerland, and (2) The Bidder (company details to be filled in based on specific bidder).',
+            'termination': 'Either party may terminate with written notice. However, confidentiality obligations survive termination. All confidential information must be returned or destroyed within 3 months if no business relationship is established.',
+            'default': documentLoaded 
+                ? `Based on your uploaded contract, here's my analysis of "${currentQuestion}": This appears to be related to confidentiality and information sharing provisions. The document establishes clear obligations for handling sensitive information during the procurement process.`
+                : `As a legal AI assistant, regarding "${currentQuestion}": I can provide general legal guidance, but for specific contract analysis, please upload your document for more accurate insights.`
+        };
+        
+        let aiResponse;
+        const question = currentQuestion.toLowerCase();
+        if (question.includes('summar')) aiResponse = mockResponses.summarize;
+        else if (question.includes('risk')) aiResponse = mockResponses.risks;
+        else if (question.includes('payment') || question.includes('pay')) aiResponse = mockResponses.payment;
+        else if (question.includes('parties') || question.includes('who')) aiResponse = mockResponses.parties;
+        else if (question.includes('terminat')) aiResponse = mockResponses.termination;
+        else aiResponse = mockResponses.default;
         
         setMessages([...newMessages, { 
             sender: 'ai', 
@@ -118,7 +145,27 @@ const ChatInterface = ({
                      <div className="flex items-center justify-center h-full text-slate-400 text-center">
                         <div>
                             <div className="text-4xl mb-4">⚖️</div>
-                            <p className="text-lg">Welcome to the Legal AI Assistant</p>
+                            <p className="text-lg mb-2">Welcome to the Legal AI Assistant</p>
+                            <p className="text-sm text-slate-500">Upload a contract to get started or ask general legal questions</p>
+                            {!documentLoaded && (
+                                <div className="mt-4 space-y-2">
+                                    <p className="text-xs text-slate-600">Try asking:</p>
+                                    <div className="flex flex-wrap gap-2 justify-center">
+                                        <button 
+                                            onClick={() => setUserInput('What should I look for in an NDA?')}
+                                            className="bg-slate-700/30 hover:bg-slate-700/50 text-slate-400 text-xs px-2 py-1 rounded transition-colors"
+                                        >
+                                            NDA advice
+                                        </button>
+                                        <button 
+                                            onClick={() => setUserInput('Explain contract liability clauses')}
+                                            className="bg-slate-700/30 hover:bg-slate-700/50 text-slate-400 text-xs px-2 py-1 rounded transition-colors"
+                                        >
+                                            Liability clauses
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -144,8 +191,30 @@ const ChatInterface = ({
                 {/* Suggestion Chips */}
                 {documentLoaded && (
                     <div className="mb-3 flex flex-wrap gap-2">
-                        <button className="bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm px-3 py-1 rounded-full">📋 Summarize</button>
-                        <button className="bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm px-3 py-1 rounded-full">⚠️ Find Risks</button>
+                        <button 
+                            onClick={() => setUserInput('Summarize this contract')}
+                            className="bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm px-3 py-1 rounded-full transition-colors"
+                        >
+                            📋 Summarize
+                        </button>
+                        <button 
+                            onClick={() => setUserInput('What are the risks in this contract?')}
+                            className="bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm px-3 py-1 rounded-full transition-colors"
+                        >
+                            ⚠️ Find Risks
+                        </button>
+                        <button 
+                            onClick={() => setUserInput('Who are the parties in this contract?')}
+                            className="bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm px-3 py-1 rounded-full transition-colors"
+                        >
+                            👥 Parties
+                        </button>
+                        <button 
+                            onClick={() => setUserInput('What are the termination clauses?')}
+                            className="bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm px-3 py-1 rounded-full transition-colors"
+                        >
+                            🚪 Termination
+                        </button>
                     </div>
                 )}
 

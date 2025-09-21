@@ -27,8 +27,44 @@ const DocumentViewer = ({
         );
     }
 
-    // Handle empty state
-    if (!sanitizedDocText || sanitizedDocText.trim() === '') {
+    // Mock document content for presentation
+    const mockDocumentContent = `NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
+
+This NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT ("Agreement") is made by and between:
+
+(i) the Office of the United Nations High Commissioner for Refugees, having its headquarters located at 94 rue de Montbrillant, 1202 Geneva, Switzerland (hereinafter "UNHCR" or the "Discloser"); and
+
+(ii) [BIDDER NAME], a company established in accordance with the laws of [JURISDICTION] and having its principal offices located at [ADDRESS] (hereinafter the "Bidder" or the "Recipient").
+
+The Discloser and Recipient are also referred to collectively as the "Parties" and individually as a "Party".
+
+RECITALS
+
+WHEREAS in connection with RFP/2014/620, Request for Proposal for the provision Off-the-shelf Soft-skill, IT Online and HR specific E-learning Courses (the "RFP"), it is advantageous to share certain data and information with the Bidder participating in the RFP;
+
+WHEREAS UNHCR agrees to provide such data and information to the Bidder for the sole purpose of preparing its Proposal under said RFP;
+
+WHEREAS the Bidder is willing to ensure that UNHCR's data and information will be held in strict confidence and only used for the permitted purpose;
+
+NOW, THEREFORE, the Parties agree as follows:
+
+1. "Confidential Information", whenever used in this Agreement, shall mean any data, document, specification and other information or material, that is delivered or disclosed by UNHCR to the Recipient in any form whatsoever, whether orally, visually in writing or otherwise (including computerized form), and that, at the time of disclosure to the Recipient, is designated as confidential.
+
+2. The Confidential Information that is delivered or otherwise disclosed by the Discloser to the Recipient shall be held in trust and confidence by the Recipient and shall be handled as follows:
+
+2.1 The Recipient shall use the same care and discretion to avoid disclosure, publication or dissemination of the Confidential Information as it uses with its own similar information that it does not wish to disclose, publish or disseminate;
+
+2.2 The Recipient shall use the Confidential Information solely for the purpose for which it was disclosed;
+
+6. The Recipient agrees to indemnify UNHCR in respect of any expenses, losses, damages, costs, claims or liability UNHCR may suffer or incur as a result of an act or omission by the Recipient or its employees, consultants and agents in connection with the Confidential Information and the Recipient's obligations under this Agreement.
+
+8. This Agreement shall enter into force on the date it is signed by both Parties. Either Party may terminate the working relationship contemplated by this Agreement by providing written notice to the other, provided, however, that the obligations and restrictions hereunder regarding the Confidential Information shall remain effective following any such termination or any other termination or expiration of this Agreement.`;
+
+    // Use mock content if no document is provided
+    const displayText = sanitizedDocText && sanitizedDocText.trim() !== '' ? sanitizedDocText : mockDocumentContent;
+
+    // Handle empty state (now only if mock content fails)
+    if (!displayText || displayText.trim() === '') {
         return (
             <div className="flex flex-col h-full">
                 <h2 className="text-xl font-bold text-white mb-4 flex-shrink-0">
@@ -65,7 +101,7 @@ const DocumentViewer = ({
 
     // Process document text for display
     const processedText = useMemo(() => {
-        let text = sanitizedDocText;
+        let text = displayText;
         
         // Truncate if maxDisplayLength is specified and text is longer
         if (maxDisplayLength && text.length > maxDisplayLength && !isExpanded) {
@@ -85,12 +121,12 @@ const DocumentViewer = ({
 
     // Calculate document stats
     const documentStats = useMemo(() => {
-        const wordCount = sanitizedDocText.trim().split(/\s+/).length;
-        const charCount = sanitizedDocText.length;
+        const wordCount = displayText.trim().split(/\s+/).length;
+        const charCount = displayText.length;
         const readingTime = Math.ceil(wordCount / 200); // Average 200 words per minute
         
         return { wordCount, charCount, readingTime };
-    }, [sanitizedDocText]);
+    }, [displayText]);
 
     return (
         <div className="flex flex-col h-full">
@@ -131,7 +167,7 @@ const DocumentViewer = ({
                 )}
 
                 {/* Expand/Collapse Button (if text is truncated) */}
-                {maxDisplayLength && sanitizedDocText.length > maxDisplayLength && (
+                {maxDisplayLength && displayText.length > maxDisplayLength && (
                     <button
                         onClick={() => setIsExpanded(!isExpanded)}
                         className="text-sm text-blue-400 hover:text-blue-300 mb-2"

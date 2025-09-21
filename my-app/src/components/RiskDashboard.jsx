@@ -21,22 +21,41 @@ const RiskDashboard = ({ analysisResults, isLoading }) => {
         );
     }
 
+    // Mock data for presentation
+    const mockRisks = [
+        {
+            title: "High Liability Exposure",
+            explanation: "The indemnification clause places unlimited liability on the Company, which could result in significant financial exposure.",
+            quote: "The Company shall indemnify and hold harmless the Client from any liability, damages, or costs arising from breach.",
+            severity: "High"
+        },
+        {
+            title: "Broad Confidentiality Definition", 
+            explanation: "The definition of 'Confidential Information' is very broad and may restrict normal business operations.",
+            quote: "any data, document, specification and other information or material, that is delivered or disclosed by UNHCR",
+            severity: "Medium"
+        },
+        {
+            title: "Mandatory Arbitration Clause",
+            explanation: "Disputes must be resolved through arbitration, limiting legal recourse options and potentially favoring one party.",
+            quote: "Any disputes shall be subject to binding arbitration in accordance with UNCITRAL Arbitration Rules",
+            severity: "Medium"
+        }
+    ];
+
+    const displayResults = analysisResults && analysisResults.length > 0 ? analysisResults : mockRisks;
+
     if (!analysisResults || analysisResults.length === 0) {
-        return (
-            <div className="text-center p-8 bg-green-500/10 border border-green-500 rounded-lg">
-                <h3 className="text-xl font-bold text-green-400 mb-2">No Significant Risks Found</h3>
-                <p className="text-slate-300">Our AI analysis did not detect any high-risk clauses in your document. As always, consider consulting with a legal professional.</p>
-            </div>
-        );
+        // Show mock data for presentation
     }
 
     return (
         <div className="space-y-4">
             <div className="text-center mb-6">
                  <h2 className="text-2xl font-bold text-white">Riskometer Analysis</h2>
-                 <p className="text-slate-400">Found {analysisResults.length} potential item(s) to review.</p>
+                 <p className="text-slate-400">Found {displayResults.length} potential item(s) to review.</p>
             </div>
-            {analysisResults.map((risk, index) => (
+            {displayResults.map((risk, index) => (
                 <div key={index} className={`p-4 rounded-lg border ${getRiskLevelStyle(index)}`}>
                     <h4 className="font-bold text-white mb-1">{risk.title}</h4>
                     <p className="text-slate-300 text-sm mb-3">{risk.explanation}</p>
