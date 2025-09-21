@@ -1,11 +1,13 @@
 # --- Builder Stage ---
+# This stage prepares the Python environment and handles build-time dependencies.
 FROM python:3.11-slim as builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies
+# Install build-essential for any Python packages that need compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a virtual environment
@@ -23,22 +25,26 @@ RUN python -m spacy download en_core_web_sm
 
 
 # --- Final Stage ---
+# This stage creates the final, lean image for running the application.
 FROM python:3.11-slim as final
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies in separate steps for better error handling
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    poppler-utils \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 \
-    libgomp1 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install only the necessary RUNTIME system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        poppler-utils \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        libgomp1 \
+        curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user and group for security
 RUN groupadd --system app && useradd --system --gid app app
@@ -70,3 +76,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Run the application using the startCommand from your render.yaml
 # This CMD is a fallback for local testing. Render will override it.
 CMD ["python", "run_api.py"]
+
