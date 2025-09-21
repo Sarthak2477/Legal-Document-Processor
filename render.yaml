@@ -31,16 +31,8 @@ services:
       mountPath: /app/uploads
       sizeGB: 1
 
-  # PostgreSQL Database
-  - type: pgsql
-    name: contract-db
-    databaseName: contract_processing
-    user: contract_user
-    plan: free
-    postgresMajorVersion: 15
-    ipAllowList: []
-
 databases:
   - name: contract-db
     databaseName: contract_processing
     user: contract_user
+    plan: free
