@@ -190,33 +190,15 @@ class ContractEmbedder:
             model = self._get_model_for_language(detected_lang)
             query_embedding = model.encode([query_text], normalize_embeddings=True)[0].tolist()
             
-            if use_hybrid:
-                # Use hybrid search function with filters
-                search_params = {
-                    "query_text": query_text,
-                    "query_embedding": query_embedding,
-                    "match_count": limit
-                }
-                if contract_id:
-                    search_params["contract_filter"] = contract_id
-                if legal_category:
-                    search_params["category_filter"] = legal_category
-                    
-                result = self.supabase.rpc("hybrid_search", search_params).execute()
-            else:
-                # Use enhanced semantic search
-                search_params = {
+            # Use basic vector search
+            result = self.supabase.rpc(
+                "match_clauses",
+                {
                     "query_embedding": query_embedding,
                     "match_threshold": similarity_threshold,
                     "match_count": limit
                 }
-                
-                if contract_id:
-                    search_params["contract_filter"] = contract_id
-                if legal_category:
-                    search_params["category_filter"] = legal_category
-                
-                result = self.supabase.rpc("match_clauses_enhanced", search_params).execute()
+            ).execute()
             
             if result.data:
                 # Validate and enhance results

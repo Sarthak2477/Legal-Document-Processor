@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     VERTEX_AI_LOCATION: str = "us-central1"
     VERTEX_AI_MODEL: str = "text-bison@001"
     
+    # Gemini API configuration
+    GEMINI_API_KEY: Optional[str] = None
+    
     # Hugging Face configuration
     HUGGINGFACE_API_KEY: Optional[str] = None
     

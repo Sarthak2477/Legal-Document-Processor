@@ -33,6 +33,22 @@ def process_contract_background(file_path: str, contract_id: str):
         pipeline = ContractPipeline()
         result = pipeline.process_contract(file_path, contract_id)
         
+        # Store processed contract data (without embeddings)
+        result_copy = result.copy() if result.get('success') else result
+        if result_copy.get('success') and result_copy.get('contract'):
+            # Convert contract object to dict for storage
+            contract = result_copy['contract']
+            if hasattr(contract, 'dict'):
+                contract_dict = contract.dict()
+                # Remove embeddings from clauses to reduce storage size
+                if 'clauses' in contract_dict:
+                    for clause in contract_dict['clauses']:
+                        if 'embedding' in clause:
+                            clause['embedding'] = None
+                result_copy['contract'] = contract_dict
+        
+        storage_manager.store_processed_contract(contract_id, result_copy)
+        
         # Update status to completed
         storage_manager.update_contract_status(contract_id, 'completed', 100)
         
@@ -47,8 +63,6 @@ def process_contract_background(file_path: str, contract_id: str):
     except Exception as e:
         # Update status to failed and cleanup
         try:
-            from pipeline.local_storage import LocalStorageManager
-            storage_manager = LocalStorageManager()
             storage_manager.update_contract_status(contract_id, 'failed', 0)
         except:
             pass

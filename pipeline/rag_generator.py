@@ -33,18 +33,23 @@ class ContractRAGGenerator:
         self.logger = logging.getLogger(__name__)
         
         # Initialize Gemini client with API key
-        api_key = os.getenv("GEMINI_API_KEY")
+        from config import settings
+        api_key = settings.GEMINI_API_KEY
         if api_key:
-            self.client = genai.Client(api_key=api_key)
+            try:
+                self.client = genai.Client(api_key=api_key)
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize Gemini client: {e}")
+                self.client = None
         else:
-            # Use mock client for testing
-            self.client = genai.Client() if hasattr(genai, 'Client') else None
+            self.logger.warning("GEMINI_API_KEY not found, using mock client")
+            self.client = None
         
         # Initialize embedder
         from pipeline.embedder import ContractEmbedder
         self.embedder = ContractEmbedder(
-            supabase_url=os.getenv("SUPABASE_URL"),
-            supabase_key=os.getenv("SUPABASE_KEY")
+            supabase_url=settings.SUPABASE_URL,
+            supabase_key=settings.SUPABASE_KEY
         )
     
     def generate_summary(self, contract: ProcessedContract) -> str:
@@ -57,13 +62,13 @@ class ContractRAGGenerator:
         Returns:
             Human-readable contract summary
         """
-        # TODO: Extract key clauses for summary
+        # Extract key clauses for summary
         key_clauses = self._identify_key_clauses(contract)
         
-        # TODO: Create prompt for LLM
+        # Create prompt for LLM
         prompt = self._create_summary_prompt(key_clauses, contract.metadata)
         
-        # TODO: Generate summary using LLM
+        # Generate summary using Gemini
         summary = self._generate_with_llm(prompt)
         
         return summary
@@ -398,34 +403,47 @@ class ContractRAGGenerator:
         return recommendations
     
     def query_contract(self, question: str, contract_id: Optional[str] = None) -> str:
-        """Answer questions using semantic search across all contracts."""
+        """Answer questions using stored contract data."""
         try:
-            # Use semantic search across all contracts for best results
-            results = self.embedder.search_similar_clauses(
-                query_text=question,
-                limit=5,
-                use_hybrid=True
-            )
+            # Get all stored contracts from local storage
+            from pipeline.local_storage import LocalStorageManager
+            storage_manager = LocalStorageManager()
             
-            self.logger.info(f"Search results count: {len(results)}")
-            if results:
-                self.logger.info(f"First result: {results[0].get('text', 'No text')[:100]}...")
+            # Load all contract data
+            all_data = storage_manager._load_data()
+            all_clauses = []
             
-            if not results:
-                return "No relevant information found. Please ensure the vector database has been populated with training data."
+            for contract_id, contract_info in all_data.items():
+                processed_data = contract_info.get('processed_data', {})
+                if processed_data.get('success') and processed_data.get('contract'):
+                    contract_dict = processed_data['contract']
+                    clauses_data = contract_dict.get('clauses', [])
+                    
+                    for clause_dict in clauses_data:
+                        clause_text = clause_dict.get('text', '')
+                        if clause_text and len(clause_text) > 20:  # Only meaningful clauses
+                            all_clauses.append(clause_text)
             
-            # Create context from relevant clauses
-            context = "\n\n".join([result['text'] for result in results])
+            if not all_clauses:
+                return "No contract data found. Please upload and process contracts first."
+            
+            # Use first 10 clauses as context
+            context = "\n\n".join(all_clauses[:10])
             
             # Create prompt
-            prompt = f"""Based on the following contract clauses, answer the question:
+            prompt = f"""Answer this question based on the contract clauses:
+
+Question: {question}
 
 Contract Clauses:
 {context}
 
-Question: {question}
+Rules:
+- Answer based ONLY on the provided clauses
+- If information is not in the clauses, say "Not found in contract clauses"
+- Be direct and concise
 
-Answer: Provide a clear, accurate answer based only on the contract clauses above. If the information is not available in the clauses, say so."""
+Answer:"""
             
             # Generate answer using Gemini
             return self._generate_with_llm(prompt)
@@ -537,13 +555,12 @@ Answer: Provide a clear, accurate answer based only on the contract clauses abov
             if clause.risk_level and clause.risk_level in ['high', 'critical']:
                 importance_score += 8
             
-            # Store importance score and add to key clauses if significant
+            # Add to key clauses if significant
             if importance_score > 5:
-                clause.importance_score = importance_score
                 key_clauses.append(clause)
         
-        # Sort by importance score and return top clauses
-        key_clauses.sort(key=lambda x: x.importance_score, reverse=True)
+        # Sort by text length (longer clauses often more important) and return top clauses
+        key_clauses.sort(key=lambda x: len(x.text), reverse=True)
         return key_clauses[:15]  # Return top 15 most important clauses
     
     def _retrieve_relevant_clauses(
@@ -599,47 +616,53 @@ Contract Information:
         
         # Prepare key clauses text
         clauses_text = ""
-        for i, clause in enumerate(key_clauses[:10], 1):  # Limit to top 10 clauses
-            clause_type = getattr(clause, 'clause_type', 'General')
-            clauses_text += f"\nClause {i} ({clause_type}):\n{clause.text[:500]}{'...' if len(clause.text) > 500 else ''}\n"
+        if key_clauses:
+            for i, clause in enumerate(key_clauses[:10], 1):  # Limit to top 10 clauses
+                clause_type = getattr(clause, 'legal_category', 'General') or 'General'
+                clause_text = clause.text if clause.text else 'No text available'
+                clauses_text += f"\nClause {i} ({clause_type}):\n{clause_text[:500]}{'...' if len(clause_text) > 500 else ''}\n"
+        else:
+            # Fallback: use all contract clauses if key clause identification fails
+            all_clauses = []
+            for section in contract.sections:
+                all_clauses.extend(section.clauses)
+            
+            for i, clause in enumerate(all_clauses[:10], 1):
+                clause_type = getattr(clause, 'legal_category', 'General') or 'General'
+                clause_text = clause.text if clause.text else 'No text available'
+                clauses_text += f"\nClause {i} ({clause_type}):\n{clause_text[:500]}{'...' if len(clause_text) > 500 else ''}\n"
         
         prompt = f"""
-You are an expert legal analyst. Please provide a comprehensive, plain-language summary of this contract.
-
-{contract_info}
+Analyze this contract and provide a clear, concise summary based ONLY on the actual contract clauses provided below.
 
 Key Contract Clauses:
 {clauses_text}
 
-Please provide a structured summary with the following sections:
+Provide a structured summary with these sections:
 
-1. **Contract Overview** (2-3 sentences)
-   - What type of contract this is
-   - Main purpose and scope
-   - Key parties involved
+**Contract Overview**
+Briefly describe what type of agreement this is and its main purpose.
 
-2. **Key Terms & Conditions**
-   - Payment terms and amounts
-   - Duration and termination conditions
-   - Main obligations of each party
+**Key Terms**
+- Payment: How much, when, and how payments are made
+- Duration: How long the contract lasts and termination conditions
+- Obligations: What each party must do
 
-3. **Important Dates & Deadlines**
-   - Effective date and duration
-   - Key milestones or deadlines
-   - Renewal or expiration terms
+**Important Provisions**
+- Liability and risk allocation
+- Intellectual property rights
+- Confidentiality requirements
+- Dispute resolution
 
-4. **Risk Factors & Important Provisions**
-   - Liability and indemnification terms
-   - Intellectual property rights
-   - Confidentiality requirements
-   - Dispute resolution procedures
+**Notable Terms**
+Any unusual or important conditions worth highlighting.
 
-5. **Unusual or Notable Provisions**
-   - Any non-standard terms
-   - Special conditions or requirements
-   - Important limitations or exclusions
-
-Write in clear, business-friendly language that a non-lawyer can understand. Avoid legal jargon and explain complex terms. Keep each section concise but comprehensive.
+Rules:
+- Use simple, clear language
+- Base your summary ONLY on the provided clauses
+- If information is not in the clauses, state "Not specified in provided clauses"
+- Keep each section brief and focused
+- Avoid legal jargon
 """
         return prompt
     
@@ -652,21 +675,18 @@ Write in clear, business-friendly language that a non-lawyer can understand. Avo
             context += f"\nClause {i} ({clause_type}):\n{clause.text[:400]}{'...' if len(clause.text) > 400 else ''}\n"
         
         prompt = f"""
-You are a legal assistant specializing in contract analysis. Answer the following question based on the provided contract clauses.
+Answer this question based on the contract clauses provided:
 
 Question: {question}
 
-Relevant Contract Clauses:
+Contract Clauses:
 {context}
 
-Instructions:
-1. Answer based ONLY on the information provided in the contract clauses above
-2. If the information is not available in the provided clauses, clearly state "This information is not available in the provided contract clauses"
-3. Cite specific clauses when possible (e.g., "According to Clause 2...")
-4. Be concise, accurate, and professional
-5. If the question is ambiguous or unclear, ask for clarification
-6. If the answer involves legal interpretation, note that this is for informational purposes only and recommend consulting with legal counsel
-7. Focus on factual information rather than legal advice
+Rules:
+- Answer based ONLY on the provided clauses
+- If information is not in the clauses, say "Not found in contract clauses"
+- Be direct and concise
+- Use simple language
 
 Answer:
 """
@@ -674,6 +694,10 @@ Answer:
     
     def _generate_with_llm(self, prompt: str, max_tokens: int = 1000) -> str:
         """Generate text using Gemini API with retry logic and error handling."""
+        # Check if client is available
+        if not self.client:
+            return self._get_fallback_response(prompt)
+        
         max_retries = 3
         retry_delay = 1
         
@@ -960,3 +984,7 @@ Answer:
                 priorities.append(f"3. {strategy['negotiation_point']} (LOW PRIORITY)")
         
         return priorities
+
+
+# Alias for backward compatibility
+RAGGenerator = ContractRAGGenerator

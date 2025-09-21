@@ -67,3 +67,19 @@ class LocalStorageManager:
     def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
         """Get contract data."""
         return self.get_contract_status(contract_id)
+    
+    def store_processed_contract(self, contract_id: str, contract_data: Dict[str, Any]) -> bool:
+        """Store processed contract data."""
+        try:
+            data = self._load_data()
+            if contract_id not in data:
+                data[contract_id] = {'contract_id': contract_id}
+            
+            data[contract_id]['processed_data'] = contract_data
+            data[contract_id]['updated_at'] = datetime.now().isoformat()
+            
+            self._save_data(data)
+            return True
+        except Exception as e:
+            logger.error(f"Error storing contract: {e}")
+            return False
