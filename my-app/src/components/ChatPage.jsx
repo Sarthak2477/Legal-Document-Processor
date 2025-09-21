@@ -42,13 +42,33 @@ export default function ChatPage({ initialMode }) {
 
     // Simulate file upload and processing
     setTimeout(() => {
-      const simulatedText = `This is the extracted text from "${file.name}".`;
+      // Set mock document content
+      const simulatedText = `NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
+
+This NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT ("Agreement") is made by and between:
+
+(i) the Office of the United Nations High Commissioner for Refugees, having its headquarters located at 94 rue de Montbrillant, 1202 Geneva, Switzerland (hereinafter "UNHCR" or the "Discloser"); and
+
+(ii) TechCorp Solutions Inc., a company established in accordance with the laws of Delaware and having its principal offices located at 123 Business Ave, San Francisco, CA 94105 (hereinafter the "Bidder" or the "Recipient").
+
+6. INDEMNIFICATION
+The Recipient agrees to indemnify UNHCR in respect of any expenses, losses, damages, costs, claims or liability UNHCR may suffer or incur as a result of an act or omission by the Recipient.
+
+8. TERM AND TERMINATION
+This Agreement shall enter into force on the date it is signed by both Parties. Either Party may terminate by providing written notice.
+
+[AI EXTRACTED METADATA]
+Document Type: Non-Disclosure Agreement
+Parties: UNHCR, TechCorp Solutions Inc.
+Jurisdiction: International/Delaware
+Risk Level: Medium-High
+Key Terms: Confidentiality, Indemnification, Termination`;
       setSanitizedDocText(simulatedText);
       setMessages((prev) => [
         ...prev,
         {
           sender: "ai",
-          text: `Great! Your document "${file.name}" has been processed. You can now ask questions, run a risk analysis, or generate a checklist.`,
+          text: `✅ Successfully processed "${file.name}"! I've extracted the text and identified key legal clauses. You can now view the document, analyze risks, or ask me questions about the contract.`,
           timestamp: new Date().toISOString(),
         },
       ]);
