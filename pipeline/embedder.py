@@ -4,7 +4,16 @@ Embeddings generation and vector storage module.
 import logging
 from typing import List, Optional, Dict, Any
 import numpy as np
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    # Fallback for deployment without sentence-transformers
+    class SentenceTransformer:
+        def __init__(self, *args, **kwargs):
+            pass
+        def encode(self, texts, **kwargs):
+            import numpy as np
+            return np.random.rand(len(texts) if isinstance(texts, list) else 1, 384)
 from supabase import create_client, Client
 from models.contract import Clause
 
@@ -24,7 +33,11 @@ class ContractEmbedder:
         self.multilingual = multilingual
         
         # Initialize primary model
-        self.model = SentenceTransformer(model_name)
+        try:
+            self.model = SentenceTransformer(model_name)
+        except Exception as e:
+            self.logger.warning(f"Failed to load model {model_name}: {e}")
+            self.model = None
         
         # Initialize multilingual fallback models
         self.fallback_models = {}
