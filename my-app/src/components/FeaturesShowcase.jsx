@@ -6,34 +6,32 @@ const featuresData = [
     title: "Interactive Q&A with Verifiable Proof",
     description:
       "Go beyond static text. Ask detailed questions about specific clauses and get plain-language answers backed by direct quotes from your document.",
-    image:
-      "https://placehold.co/600x400/0f172a/94a3b8?text=Chat+Interface",
+    video: "/Document.mp4",
     points: ["Plain-Language Answers", "Verifiable Citations", "Context-Aware AI"],
   },
   {
     title: "Automated Risk Analysis (Riskometer)",
     description:
       "Proactively understand your position. Our AI identifies potential risks, hidden obligations, and unfair clauses, giving you a clear view of what needs attention.",
-    image:
-      "https://placehold.co/600x400/0f172a/94a3b8?text=Risk+Dashboard",
+   video: "/Document - Made with Clipchamp.mp4",
     points: [
       "Color-Coded Risk Levels",
       "Obligation Highlighting",
       "Unfair Clause Detection",
     ],
   },
-  {
-    title: "Automated Document Checklists",
-    description:
-      "Never miss a step. Our AI identifies your document type and instantly generates a checklist of required supporting documents and actions.",
-    image:
-      "https://placehold.co/600x400/0f172a/94a3b8?text=Checklist+UI",
-    points: [
-      "Document Type Recognition",
-      "Actionable Step-by-Step Lists",
-      "Reduces Manual Error",
-    ],
-  },
+  // {
+    // title: "Automated Document Checklists",
+    // description:
+    //   "Never miss a step. Our AI identifies your document type and instantly generates a checklist of required supporting documents and actions.",
+    // image:
+    //   "https://placehold.co/600x400/0f172a/94a3b8?text=Checklist+UI",
+    // points: [
+    //   "Document Type Recognition",
+    //   "Actionable Step-by-Step Lists",
+    //   "Reduces Manual Error",
+    // ],
+  // },
 ];
 
 const FeaturesShowcase = () => {
@@ -116,15 +114,27 @@ const FeaturesShowcase = () => {
     isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
   }`}
 >
-  {/* Image Column */}
+  {/* Image/Video Column */}
   <div className={`relative group ${isOdd ? 'lg:order-2' : ''}`}>
     <div className="absolute -inset-4 bg-gradient-to-b from-black via-gray-900 to-black rounded-2xl blur-xl opacity-40 group-hover:opacity-70 transition-opacity duration-300"></div>
-    <img 
-      src={feature.image} 
-      alt={feature.title} 
-      className="relative rounded-lg shadow-2xl w-full h-72 object-cover"
-      onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/0f172a/94a3b8?text=Image+Not+Found'; }}
-    />
+    {feature.video ? (
+      <video 
+        autoPlay 
+        loop 
+        muted 
+        playsInline
+        className="relative rounded-lg shadow-2xl w-full h-72 object-cover"
+      >
+        <source src={feature.video} type="video/mp4" />
+      </video>
+    ) : (
+      <img 
+        src={feature.image} 
+        alt={feature.title} 
+        className="relative rounded-lg shadow-2xl w-full h-72 object-cover"
+        onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/600x400/0f172a/94a3b8?text=Image+Not+Found'; }}
+      />
+    )}
   </div>
 
   {/* Text Column */}

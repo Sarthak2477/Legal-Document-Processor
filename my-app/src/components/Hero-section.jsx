@@ -60,12 +60,7 @@ const HeroPage = () => {
             {/* Description */}
             <p className="text-gray-400 text-xl md:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed">
               <span className="text-white font-semibold">Unlock</span> the power
-              of your legal documents. 
-              <span className="text-white font-semibold">
-                {" "}
-           
-              </span>
-              .
+              of your legal documents with AI-powered analysis.
             </p>
 
             {/* CTA buttons */}

@@ -1,3 +1,5 @@
+// components/Navbar.js
+
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -19,12 +21,34 @@ const Navbar = ({ hideLaunchButton = false }) => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
+  // Main function to handle scrolling to a specific section
+  const handleScroll = (e, targetId) => {
+    e.preventDefault();
+    const targetElement = document.getElementById(targetId);
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: "smooth" });
+    }
+    // Close mobile menu on link click
+    if (isMobileMenuOpen) {
+      setIsMobileMenuOpen(false);
+    }
+  };
+
+  // Helper function to scroll to the very top of the page
+  const scrollToTop = (e) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (isMobileMenuOpen) {
+      setIsMobileMenuOpen(false);
+    }
+  };
+
   useEffect(() => {
-    const handleScroll = () => {
+    const checkScroll = () => {
       setIsScrolled(window.scrollY > 50);
     };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", checkScroll);
+    return () => window.removeEventListener("scroll", checkScroll);
   }, []);
 
   return (
@@ -39,24 +63,12 @@ const Navbar = ({ hideLaunchButton = false }) => {
         <div className="flex justify-between items-center">
           {/* Logo / Brand Name */}
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-5 h-5 text-white"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V8zm0 4a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1v-2z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
             <a
-              href="#"
+              href="#home"
+              onClick={scrollToTop}
               className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent hover:from-blue-400 hover:to-indigo-400 transition-all duration-300"
             >
-              DocuMind
+              Legalese  
             </a>
           </div>
 
@@ -75,7 +87,8 @@ const Navbar = ({ hideLaunchButton = false }) => {
             <ul className="flex items-center space-x-8 relative z-10">
               <li>
                 <a
-                  href="#"
+                  href="#home"
+                  onClick={scrollToTop}
                   className="text-white transition-all duration-300 text-sm font-medium relative group"
                 >
                   Home
@@ -84,7 +97,8 @@ const Navbar = ({ hideLaunchButton = false }) => {
               </li>
               <li>
                 <a
-                  href="#"
+                  href="#features"
+                  onClick={(e) => handleScroll(e, "features")}
                   className="text-gray-300 hover:text-white transition-all duration-300 text-sm font-medium relative group"
                 >
                   Features
@@ -93,7 +107,8 @@ const Navbar = ({ hideLaunchButton = false }) => {
               </li>
               <li>
                 <a
-                  href="#"
+                  href="#about"
+                  onClick={(e) => handleScroll(e, "about")}
                   className="text-gray-300 hover:text-white transition-all duration-300 text-sm font-medium relative group"
                 >
                   About
@@ -104,7 +119,6 @@ const Navbar = ({ hideLaunchButton = false }) => {
           </div>
 
           {/* CTA Button */}
-          {/* --- CHANGE IS HERE: Conditionally render the button --- */}
           {!hideLaunchButton && (
             <div className="hidden lg:flex bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-full p-1 shadow-lg">
               <Link href="/app?mode=upload">
@@ -161,7 +175,8 @@ const Navbar = ({ hideLaunchButton = false }) => {
             <ul className="flex flex-col space-y-3">
               <li>
                 <a
-                  href="#"
+                  href="#home"
+                  onClick={scrollToTop}
                   className="flex items-center justify-between text-white transition-all duration-300 py-3 px-4 rounded-lg hover:bg-slate-800/70"
                 >
                   <span className="font-medium">Home</span>
@@ -169,7 +184,8 @@ const Navbar = ({ hideLaunchButton = false }) => {
               </li>
               <li>
                 <a
-                  href="#"
+                  href="#features"
+                  onClick={(e) => handleScroll(e, "features")}
                   className="flex items-center justify-between text-gray-300 hover:text-white transition-all duration-300 py-3 px-4 rounded-lg hover:bg-slate-800/70 group"
                 >
                   <span className="font-medium">Features</span>
@@ -190,7 +206,8 @@ const Navbar = ({ hideLaunchButton = false }) => {
               </li>
               <li>
                 <a
-                  href="#"
+                  href="#about"
+                  onClick={(e) => handleScroll(e, "about")}
                   className="flex items-center justify-between text-gray-300 hover:text-white transition-all duration-300 py-3 px-4 rounded-lg hover:bg-slate-800/70 group"
                 >
                   <span className="font-medium">About</span>

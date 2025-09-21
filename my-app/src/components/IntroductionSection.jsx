@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 
 const IntroductionSection = () => {
@@ -10,6 +10,11 @@ const IntroductionSection = () => {
   // State and handlers for 3D card tilt effect
   const [card1Style, setCard1Style] = useState({});
   const [card2Style, setCard2Style] = useState({});
+
+  const getCardStyle = useMemo(() => (cardStyle, delay) => ({
+    ...cardStyle,
+    transitionDelay: cardStyle.transition ? undefined : delay
+  }), []);
 
   const handleMouseMove = (e, setStyle) => {
     const card = e.currentTarget;
@@ -35,9 +40,18 @@ const IntroductionSection = () => {
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), 200);
     
-    // Parallax scroll listener
-    const handleScroll = () => setScrollPosition(window.pageYOffset);
-    window.addEventListener("scroll", handleScroll);
+    // Throttled parallax scroll listener
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          setScrollPosition(window.pageYOffset);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       clearTimeout(timer);
@@ -81,7 +95,7 @@ const IntroductionSection = () => {
           {/* Card 1 with 3D Tilt */}
           <div 
             className={`group relative bg-gradient-to-br from-slate-800/40 to-gray-900/60 backdrop-blur-sm rounded-3xl p-10 shadow-2xl border border-slate-700/50 transition-all duration-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`} 
-            style={{ ...card1Style, transitionDelay: card1Style.transition ? undefined : '400ms' }}
+            style={getCardStyle(card1Style, '400ms')}
             onMouseMove={(e) => handleMouseMove(e, setCard1Style)}
             onMouseLeave={() => handleMouseLeave(setCard1Style)}
           >
@@ -117,7 +131,7 @@ const IntroductionSection = () => {
           {/* Card 2 with 3D Tilt */}
           <div 
             className={`group relative bg-gradient-to-br from-slate-800/40 to-gray-900/60 backdrop-blur-sm rounded-3xl p-10 shadow-2xl border border-slate-700/50 transition-all duration-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`} 
-            style={{ ...card2Style, transitionDelay: card2Style.transition ? undefined : '600ms' }}
+            style={getCardStyle(card2Style, '600ms')}
             onMouseMove={(e) => handleMouseMove(e, setCard2Style)}
             onMouseLeave={() => handleMouseLeave(setCard2Style)}
           >
