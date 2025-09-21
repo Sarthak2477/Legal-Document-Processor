@@ -129,6 +129,37 @@ class FirestoreManager:
             self.logger.error(f"Error retrieving contract: {str(e)}")
             return None
     
+    def get_contract_status(self, contract_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get contract processing status.
+        
+        Args:
+            contract_id: Contract identifier
+            
+        Returns:
+            Status information or None if not found
+        """
+        try:
+            doc_ref = self.db.collection('contracts').document(contract_id)
+            doc = doc_ref.get()
+            
+            if doc.exists:
+                data = doc.to_dict()
+                return {
+                    'contract_id': contract_id,
+                    'status': data.get('status', 'unknown'),
+                    'progress': data.get('progress', 0),
+                    'created_at': data.get('created_at'),
+                    'updated_at': data.get('updated_at'),
+                    'filename': data.get('metadata', {}).get('filename', ''),
+                    'pages': data.get('metadata', {}).get('pages', 0)
+                }
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting contract status: {str(e)}")
+            return None
+    
     def list_contracts(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
         List all contracts with pagination.
@@ -200,6 +231,30 @@ class FirestoreManager:
             
         except Exception as e:
             self.logger.error(f"Error updating job status: {str(e)}")
+            return False
+    
+    def update_contract_status(self, contract_id: str, status: str, progress: int = 0) -> bool:
+        """
+        Update contract processing status.
+        
+        Args:
+            contract_id: Contract identifier
+            status: New status (processing, completed, failed)
+            progress: Progress percentage (0-100)
+            
+        Returns:
+            Success status
+        """
+        try:
+            self.db.collection('contracts').document(contract_id).update({
+                'status': status,
+                'progress': progress,
+                'updated_at': firestore.SERVER_TIMESTAMP
+            })
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error updating contract status: {str(e)}")
             return False
     
     def _store_sections(self, contract_id: str, sections: List[Any]):

@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 class ProcessContractRequest(BaseModel):
     file_path: str
-    bucket: Optional[str] = None
     contract_id: Optional[str] = None
 
 class ProcessContractResponse(BaseModel):
@@ -19,18 +18,43 @@ class ProcessContractResponse(BaseModel):
     contract_id: str
     message: str
 
-def process_contract_background(file_path: str, contract_id: str, bucket: Optional[str] = None):
+def process_contract_background(file_path: str, contract_id: str):
     """Background task for contract processing."""
+    import os
     try:
         from pipeline.orchestrator import ContractPipeline
+        from pipeline.firestore_manager import FirestoreManager
+        
+        # Initialize status
+        from pipeline.local_storage import LocalStorageManager
+        storage_manager = LocalStorageManager()
+        storage_manager.update_contract_status(contract_id, 'processing', 0)
         
         pipeline = ContractPipeline()
-        full_path = f"gs://{bucket}/{file_path}" if bucket else file_path
-        result = pipeline.process_contract(full_path, contract_id)
+        result = pipeline.process_contract(file_path, contract_id)
+        
+        # Update status to completed
+        storage_manager.update_contract_status(contract_id, 'completed', 100)
         
         logger.info(f"Contract {contract_id} processed successfully")
+        
+        # Cleanup temporary file after processing
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Temporary file {file_path} cleaned up")
+        
         return result
     except Exception as e:
+        # Update status to failed and cleanup
+        try:
+            from pipeline.local_storage import LocalStorageManager
+            storage_manager = LocalStorageManager()
+            storage_manager.update_contract_status(contract_id, 'failed', 0)
+        except:
+            pass
+            
+        if os.path.exists(file_path):
+            os.remove(file_path)
         logger.error(f"Contract processing failed: {e}")
         raise
 
@@ -46,8 +70,7 @@ async def process_contract(
         background_tasks.add_task(
             process_contract_background,
             request.file_path,
-            contract_id,
-            request.bucket
+            contract_id
         )
         
         return ProcessContractResponse(
@@ -62,10 +85,10 @@ async def process_contract(
 async def get_contract_status(contract_id: str):
     """Get processing status of a contract."""
     try:
-        from pipeline.firestore_manager import FirestoreManager
+        from pipeline.local_storage import LocalStorageManager
         
-        firestore_manager = FirestoreManager()
-        status = firestore_manager.get_contract_status(contract_id)
+        storage_manager = LocalStorageManager()
+        status = storage_manager.get_contract_status(contract_id)
         
         if not status:
             raise HTTPException(status_code=404, detail="Contract not found")
@@ -78,10 +101,10 @@ async def get_contract_status(contract_id: str):
 async def get_contract(contract_id: str):
     """Get processed contract data."""
     try:
-        from pipeline.firestore_manager import FirestoreManager
+        from pipeline.local_storage import LocalStorageManager
         
-        firestore_manager = FirestoreManager()
-        contract = firestore_manager.get_contract(contract_id)
+        storage_manager = LocalStorageManager()
+        contract = storage_manager.get_contract(contract_id)
         
         if not contract:
             raise HTTPException(status_code=404, detail="Contract not found")
