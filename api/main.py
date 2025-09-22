@@ -20,6 +20,15 @@ app.add_middleware(
 )
 
 # Include routers
+# Add root health endpoint
+@app.get("/")
+async def root():
+    return {"status": "healthy", "message": "Contract Processing API is running"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(upload.router, prefix="/upload", tags=["upload"])
 app.include_router(contracts.router, prefix="/contracts", tags=["contracts"])
