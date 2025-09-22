@@ -65,21 +65,80 @@ class LocalStorageManager:
             return False
     
     def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
-        """Get contract data."""
-        return self.get_contract_status(contract_id)
+        """Get contract data from local storage or database."""
+        # Try local storage first
+        local_data = self.get_contract_status(contract_id)
+        if local_data and local_data.get('processed_data'):
+            return local_data
+        
+        # Fallback to database
+        return self._get_from_database(contract_id)
+    
+    def _get_from_database(self, contract_id: str) -> Optional[Dict[str, Any]]:
+        """Get contract data from Supabase."""
+        try:
+            from config import settings
+            if settings.SUPABASE_URL and settings.SUPABASE_KEY:
+                from supabase import create_client
+                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                
+                result = supabase.table('contracts').select('*').eq('contract_id', contract_id).execute()
+                
+                if result.data:
+                    contract_data = result.data[0]
+                    return {
+                        'contract_id': contract_id,
+                        'status': contract_data.get('status', 'completed'),
+                        'processed_data': contract_data.get('data', {}),
+                        'created_at': contract_data.get('created_at'),
+                        'updated_at': contract_data.get('created_at')
+                    }
+        except Exception as e:
+            logger.warning(f"Failed to get from database: {e}")
+        
+        return None
     
     def store_processed_contract(self, contract_id: str, contract_data: Dict[str, Any]) -> bool:
         """Store processed contract data."""
         try:
             data = self._load_data()
             if contract_id not in data:
-                data[contract_id] = {'contract_id': contract_id}
+                data[contract_id] = {
+                    'contract_id': contract_id,
+                    'created_at': datetime.now().isoformat()
+                }
             
+            # Store in both local storage and database
             data[contract_id]['processed_data'] = contract_data
             data[contract_id]['updated_at'] = datetime.now().isoformat()
+            data[contract_id]['status'] = 'completed'
             
             self._save_data(data)
+            
+            # Also store in Supabase for persistence
+            self._store_in_database(contract_id, contract_data)
+            
             return True
         except Exception as e:
             logger.error(f"Error storing contract: {e}")
             return False
+    
+    def _store_in_database(self, contract_id: str, contract_data: Dict[str, Any]):
+        """Store contract data in Supabase for persistence."""
+        try:
+            from config import settings
+            if settings.SUPABASE_URL and settings.SUPABASE_KEY:
+                from supabase import create_client
+                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                
+                # Store contract metadata
+                supabase.table('contracts').upsert({
+                    'contract_id': contract_id,
+                    'data': contract_data,
+                    'created_at': datetime.now().isoformat(),
+                    'status': 'completed'
+                }).execute()
+                
+                logger.info(f"Contract {contract_id} stored in database")
+        except Exception as e:
+            logger.warning(f"Failed to store in database: {e}")
