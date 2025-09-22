@@ -3,6 +3,7 @@ Local JSON storage manager (replaces Firestore).
 """
 import json
 import os
+import gc
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -65,14 +66,19 @@ class LocalStorageManager:
             return False
     
     def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
-        """Get contract data from local storage or database."""
-        # Try local storage first
+        """Get contract data (always from database for full data)."""
+        # Check if contract exists in local metadata
         local_data = self.get_contract_status(contract_id)
-        if local_data and local_data.get('processed_data'):
-            return local_data
+        if not local_data:
+            return None
         
-        # Fallback to database
-        return self._get_from_database(contract_id)
+        # Always get full data from database to save memory
+        db_data = self._get_from_database(contract_id)
+        if db_data:
+            return db_data
+        
+        # Fallback to local if database fails
+        return local_data
     
     def _get_from_database(self, contract_id: str) -> Optional[Dict[str, Any]]:
         """Get contract data from Supabase."""
@@ -99,7 +105,7 @@ class LocalStorageManager:
         return None
     
     def store_processed_contract(self, contract_id: str, contract_data: Dict[str, Any]) -> bool:
-        """Store processed contract data."""
+        """Store processed contract data (database-only for memory efficiency)."""
         try:
             data = self._load_data()
             if contract_id not in data:
@@ -108,15 +114,22 @@ class LocalStorageManager:
                     'created_at': datetime.now().isoformat()
                 }
             
-            # Store in both local storage and database
-            data[contract_id]['processed_data'] = contract_data
-            data[contract_id]['updated_at'] = datetime.now().isoformat()
-            data[contract_id]['status'] = 'completed'
+            # Store only minimal metadata in memory
+            data[contract_id].update({
+                'status': 'completed',
+                'updated_at': datetime.now().isoformat(),
+                'has_processed_data': True,
+                'clause_count': len(contract_data.get('contract', {}).get('clauses', [])) if contract_data.get('success') else 0
+            })
             
             self._save_data(data)
             
-            # Also store in Supabase for persistence
+            # Store full data in database only
             self._store_in_database(contract_id, contract_data)
+            
+            # Force garbage collection to free memory
+            del contract_data
+            gc.collect()
             
             return True
         except Exception as e:
@@ -132,9 +145,13 @@ class LocalStorageManager:
                 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
                 
                 # Store contract metadata
+                # Compress data before storing
+                import json
+                compressed_data = json.dumps(contract_data, separators=(',', ':'))  # Minimal JSON
+                
                 supabase.table('contracts').upsert({
                     'contract_id': contract_id,
-                    'data': contract_data,
+                    'data': json.loads(compressed_data),  # Store as JSONB
                     'created_at': datetime.now().isoformat(),
                     'status': 'completed'
                 }).execute()

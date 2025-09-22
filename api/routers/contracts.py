@@ -33,21 +33,32 @@ def process_contract_background(file_path: str, contract_id: str):
         pipeline = ContractPipeline()
         result = pipeline.process_contract(file_path, contract_id)
         
-        # Store processed contract data (without embeddings)
-        result_copy = result.copy() if result.get('success') else result
-        if result_copy.get('success') and result_copy.get('contract'):
+        # Store processed contract data (memory optimized)
+        if result.get('success') and result.get('contract'):
             # Convert contract object to dict for storage
-            contract = result_copy['contract']
+            contract = result['contract']
             if hasattr(contract, 'dict'):
                 contract_dict = contract.dict()
-                # Remove embeddings from clauses to reduce storage size
+                # Remove embeddings and large data to save memory
                 if 'clauses' in contract_dict:
                     for clause in contract_dict['clauses']:
-                        if 'embedding' in clause:
-                            clause['embedding'] = None
-                result_copy['contract'] = contract_dict
-        
-        storage_manager.store_processed_contract(contract_id, result_copy)
+                        # Remove embeddings and large metadata
+                        clause.pop('embedding', None)
+                        clause.pop('metadata', None)
+                
+                # Create minimal result for storage
+                storage_result = {
+                    'success': True,
+                    'contract': contract_dict,
+                    'processing_stats': result.get('processing_stats', {})
+                }
+                
+                storage_manager.store_processed_contract(contract_id, storage_result)
+            
+            # Clean up memory immediately
+            del contract
+            import gc
+            gc.collect()
         
         # Update status to completed
         storage_manager.update_contract_status(contract_id, 'completed', 100)
