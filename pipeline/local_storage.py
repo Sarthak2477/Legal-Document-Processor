@@ -11,151 +11,187 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class LocalStorageManager:
-    """Local JSON file storage for contract metadata."""
+class DatabaseStorageManager:
+    """Database-only storage for contract data."""
     
-    def __init__(self, storage_dir: str = "data"):
-        self.storage_dir = Path(storage_dir)
-        self.storage_dir.mkdir(exist_ok=True)
-        self.contracts_file = self.storage_dir / "contracts.json"
-        self._ensure_files()
-    
-    def _ensure_files(self):
-        """Create storage files if they don't exist."""
-        if not self.contracts_file.exists():
-            self._save_data({})
-    
-    def _load_data(self) -> Dict[str, Any]:
-        """Load data from JSON file."""
-        try:
-            with open(self.contracts_file, 'r') as f:
-                return json.load(f)
-        except:
-            return {}
-    
-    def _save_data(self, data: Dict[str, Any]):
-        """Save data to JSON file."""
-        with open(self.contracts_file, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
+    def __init__(self):
+        # No local storage initialization
+        pass
     
     def get_contract_status(self, contract_id: str) -> Optional[Dict[str, Any]]:
-        """Get contract processing status."""
-        data = self._load_data()
-        return data.get(contract_id)
+        """Get contract processing status (database-only)."""
+        return self._get_from_database(contract_id)
     
     def update_contract_status(self, contract_id: str, status: str, progress: int = 0) -> bool:
-        """Update contract processing status."""
+        """Update contract processing status (database-only)."""
         try:
-            data = self._load_data()
-            if contract_id not in data:
-                data[contract_id] = {
-                    'contract_id': contract_id,
-                    'created_at': datetime.now().isoformat()
-                }
+            # Update status in database only
+            from config import settings
             
-            data[contract_id].update({
-                'status': status,
-                'progress': progress,
-                'updated_at': datetime.now().isoformat()
-            })
+            if not getattr(settings, 'SUPABASE_URL', None) or not getattr(settings, 'SUPABASE_KEY', None):
+                logger.warning("Supabase not configured - cannot update status")
+                return False
+                
+            from supabase import create_client
+            supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
             
-            self._save_data(data)
-            return True
+            # Try update first, then insert if not exists
+            try:
+                result = supabase.table('contracts').update({
+                    'status': status,
+                    'updated_at': datetime.now().isoformat()
+                }).eq('contract_id', contract_id).execute()
+                
+                if not result.data:
+                    # Insert if update didn't affect any rows
+                    result = supabase.table('contracts').insert({
+                        'contract_id': contract_id,
+                        'status': status,
+                        'updated_at': datetime.now().isoformat(),
+                        'data': {}
+                    }).execute()
+            except Exception as e:
+                if '23505' in str(e):  # Duplicate key error
+                    # Record exists, just update
+                    result = supabase.table('contracts').update({
+                        'status': status,
+                        'updated_at': datetime.now().isoformat()
+                    }).eq('contract_id', contract_id).execute()
+                else:
+                    raise
+            
+            return bool(result.data)
         except Exception as e:
             logger.error(f"Error updating status: {e}")
             return False
     
     def get_contract(self, contract_id: str) -> Optional[Dict[str, Any]]:
-        """Get contract data (always from database for full data)."""
-        # Check if contract exists in local metadata
-        local_data = self.get_contract_status(contract_id)
-        if not local_data:
-            return None
-        
-        # Always get full data from database to save memory
-        db_data = self._get_from_database(contract_id)
-        if db_data:
-            return db_data
-        
-        # Fallback to local if database fails
-        return local_data
+        """Get contract data (database-only)."""
+        # Get data ONLY from database
+        return self._get_from_database(contract_id)
     
     def _get_from_database(self, contract_id: str) -> Optional[Dict[str, Any]]:
         """Get contract data from Supabase."""
         try:
             from config import settings
-            if settings.SUPABASE_URL and settings.SUPABASE_KEY:
-                from supabase import create_client
-                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            
+            if not getattr(settings, 'SUPABASE_URL', None) or not getattr(settings, 'SUPABASE_KEY', None):
+                logger.debug("Supabase not configured, skipping database lookup")
+                return None
                 
-                result = supabase.table('contracts').select('*').eq('contract_id', contract_id).execute()
+            from supabase import create_client
+            supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            
+            result = supabase.table('contracts').select('*').eq('contract_id', contract_id).execute()
+            
+            if result.data:
+                contract_data = result.data[0]
+                logger.info(f"✅ Retrieved {contract_id} from database")
+                return {
+                    'contract_id': contract_id,
+                    'status': contract_data.get('status', 'completed'),
+                    'processed_data': contract_data.get('data', {}),
+                    'created_at': contract_data.get('created_at'),
+                    'updated_at': contract_data.get('created_at')
+                }
+            else:
+                logger.info(f"Contract {contract_id} not found in database")
                 
-                if result.data:
-                    contract_data = result.data[0]
-                    return {
-                        'contract_id': contract_id,
-                        'status': contract_data.get('status', 'completed'),
-                        'processed_data': contract_data.get('data', {}),
-                        'created_at': contract_data.get('created_at'),
-                        'updated_at': contract_data.get('created_at')
-                    }
+        except ImportError:
+            logger.warning("Supabase library not available")
         except Exception as e:
-            logger.warning(f"Failed to get from database: {e}")
+            logger.error(f"Database retrieval failed for {contract_id}: {e}")
         
         return None
     
     def store_processed_contract(self, contract_id: str, contract_data: Dict[str, Any]) -> bool:
-        """Store processed contract data (database-only for memory efficiency)."""
+        """Store processed contract data (database-only)."""
         try:
-            data = self._load_data()
-            if contract_id not in data:
-                data[contract_id] = {
-                    'contract_id': contract_id,
-                    'created_at': datetime.now().isoformat()
-                }
-            
-            # Store only minimal metadata in memory
-            data[contract_id].update({
-                'status': 'completed',
-                'updated_at': datetime.now().isoformat(),
-                'has_processed_data': True,
-                'clause_count': len(contract_data.get('contract', {}).get('clauses', [])) if contract_data.get('success') else 0
-            })
-            
-            self._save_data(data)
-            
-            # Store full data in database only
-            self._store_in_database(contract_id, contract_data)
+            # Store ONLY in database, no local storage
+            success = self._store_in_database(contract_id, contract_data)
             
             # Force garbage collection to free memory
             del contract_data
             gc.collect()
             
-            return True
+            return success
         except Exception as e:
             logger.error(f"Error storing contract: {e}")
             return False
     
+
     def _store_in_database(self, contract_id: str, contract_data: Dict[str, Any]):
         """Store contract data in Supabase for persistence."""
         try:
             from config import settings
-            if settings.SUPABASE_URL and settings.SUPABASE_KEY:
-                from supabase import create_client
-                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            
+            logger.info(f"Attempting to store {contract_id} in database")
+            logger.info(f"Supabase URL exists: {bool(getattr(settings, 'SUPABASE_URL', None))}")
+            logger.info(f"Supabase Key exists: {bool(getattr(settings, 'SUPABASE_KEY', None))}")
+            
+            if not getattr(settings, 'SUPABASE_URL', None) or not getattr(settings, 'SUPABASE_KEY', None):
+                logger.warning("Supabase credentials not configured - storing locally only")
+                return
+            
+            from supabase import create_client
+            supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            
+            # Convert datetime objects to strings for JSON serialization
+            def serialize_datetime(obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                return obj
+            
+            # Clean contract data for JSON serialization
+            import json
+            clean_data = json.loads(json.dumps(contract_data, default=serialize_datetime))
+            
+            # Try update first, then insert if not exists
+            try:
+                result = supabase.table('contracts').update({
+                    'data': clean_data,
+                    'status': 'completed',
+                    'updated_at': datetime.now().isoformat()
+                }).eq('contract_id', contract_id).execute()
                 
-                # Store contract metadata
-                # Compress data before storing
-                import json
-                compressed_data = json.dumps(contract_data, separators=(',', ':'))  # Minimal JSON
+                if not result.data:
+                    # Insert if update didn't affect any rows
+                    result = supabase.table('contracts').insert({
+                        'contract_id': contract_id,
+                        'data': clean_data,
+                        'created_at': datetime.now().isoformat(),
+                        'status': 'completed'
+                    }).execute()
+            except Exception as e:
+                if '23505' in str(e):  # Duplicate key error
+                    # Record exists, just update
+                    result = supabase.table('contracts').update({
+                        'data': clean_data,
+                        'status': 'completed',
+                        'updated_at': datetime.now().isoformat()
+                    }).eq('contract_id', contract_id).execute()
+                else:
+                    raise
+            
+            if result.data:
+                logger.info(f"✅ Contract {contract_id} stored in database successfully")
+                return True
+            else:
+                logger.error(f"❌ Failed to store {contract_id}: No data returned")
+                return False
                 
-                supabase.table('contracts').upsert({
-                    'contract_id': contract_id,
-                    'data': json.loads(compressed_data),  # Store as JSONB
-                    'created_at': datetime.now().isoformat(),
-                    'status': 'completed'
-                }).execute()
-                
-                logger.info(f"Contract {contract_id} stored in database")
+            return True
+        except ImportError as e:
+            logger.error(f"Supabase library not available: {e}")
+            return False
         except Exception as e:
-            logger.warning(f"Failed to store in database: {e}")
+            logger.error(f"Database storage failed for {contract_id}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            return False
+    
+    def get_all_contracts(self) -> Dict[str, Any]:
+        """Get all contracts from database."""
+        return self._load_data()
+
+# Alias for backward compatibility
+LocalStorageManager = DatabaseStorageManager

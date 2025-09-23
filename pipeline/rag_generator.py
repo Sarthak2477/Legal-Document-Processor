@@ -406,55 +406,67 @@ class ContractRAGGenerator:
         """Answer questions using stored contract data."""
         try:
             # Get all stored contracts from local storage
-            from pipeline.local_storage import LocalStorageManager
-            storage_manager = LocalStorageManager()
+            from pipeline.local_storage import DatabaseStorageManager
+            storage_manager = DatabaseStorageManager()
             
-            # Load all contract data
-            all_data = storage_manager._load_data()
-            all_clauses = []
-            
-            self.logger.info(f"DEBUG: Found {len(all_data)} contracts in storage")
-            
-            for contract_id, contract_info in all_data.items():
-                processed_data = contract_info.get('processed_data', {})
+            # Try semantic search first if embedder is available
+            try:
+                # Use semantic search to find relevant clauses
+                search_results = self.embedder.search_similar_clauses(
+                    query_text=question,
+                    limit=3,
+                    similarity_threshold=0.3
+                )
                 
-                if processed_data.get('success') and processed_data.get('contract'):
-                    contract_data = processed_data['contract']
+                if search_results:
+                    context_clauses = [result['text'] for result in search_results]
+                    context = "\n\n".join(context_clauses)
+                    self.logger.info(f"Using semantic search: found {len(context_clauses)} relevant clauses")
+                else:
+                    self.logger.info("Semantic search found no results, falling back to basic retrieval")
+                    raise Exception("No semantic results")
                     
-                    # Skip string contracts, use dict contracts
-                    if isinstance(contract_data, dict):
-                        clauses_data = contract_data.get('clauses', [])
-                        
-                        for clause_dict in clauses_data:
-                            if isinstance(clause_dict, dict):
-                                clause_text = clause_dict.get('text', '')
-                                if clause_text and len(clause_text) > 50:
-                                    all_clauses.append(clause_text)
-                                    if len(all_clauses) >= 10:  # Limit to 10 clauses
-                                        break
-                        
-                        if len(all_clauses) >= 10:
-                            break
-            
-            self.logger.info(f"Total clauses found: {len(all_clauses)}")
-            
-            if not all_clauses:
-                return "No contract data found. Please upload and process contracts first."
-            
-            # Use first 3 clauses as context
-            context = "\n\n".join(all_clauses[:3])
+            except Exception as e:
+                self.logger.warning(f"Semantic search failed: {e}, using fallback method")
+                
+                # Fallback: basic retrieval from database
+                from config import settings
+                from supabase import create_client
+                
+                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                
+                if contract_id:
+                    result = supabase.table('contracts').select('data').eq('contract_id', contract_id).limit(1).execute()
+                else:
+                    result = supabase.table('contracts').select('data').limit(2).execute()
+                
+                if not result.data:
+                    return "No contract data found. Please upload and process contracts first."
+                
+                context_clauses = []
+                for contract_row in result.data:
+                    contract_data = contract_row.get('data', {})
+                    if contract_data.get('success') and contract_data.get('contract'):
+                        contract_dict = contract_data['contract']
+                        if isinstance(contract_dict, dict):
+                            clauses_data = contract_dict.get('clauses', [])
+                            for clause_dict in clauses_data[:3]:
+                                if isinstance(clause_dict, dict):
+                                    clause_text = clause_dict.get('text', '')
+                                    if clause_text and len(clause_text) > 20:
+                                        context_clauses.append(clause_text)
+                                        if len(context_clauses) >= 3:
+                                            break
+                            if len(context_clauses) >= 3:
+                                break
+                
+                if not context_clauses:
+                    return "No contract clauses found. Please ensure the contract was processed successfully."
+                
+                context = "\n\n".join(context_clauses)
             
             # Create prompt
-            prompt = f"""Based on the following contract clauses, answer the question:
-
-Contract Clauses:
-{context}
-
-Question: {question}
-
-Answer based only on the contract clauses above. If the information is not available, say "Not found in contract clauses".
-
-Answer:"""
+            prompt = f"The following are contextually relevant contract clauses found through semantic search based on your question:\n\n{context}\n\nQuestion: {question}\n\nAnswer based only on these relevant contract clauses above. If the answer cannot be found in these specific clauses, say 'Not found in the relevant contract clauses'."
             
             # Generate answer using Gemini
             return self._generate_with_llm(prompt)
@@ -467,8 +479,8 @@ Answer:"""
         """Search for similar contracts or clauses."""
         try:
             # Get all stored contracts from local storage
-            from pipeline.local_storage import LocalStorageManager
-            storage_manager = LocalStorageManager()
+            from pipeline.local_storage import DatabaseStorageManager
+            storage_manager = DatabaseStorageManager()
             
             all_data = storage_manager._load_data()
             results = []

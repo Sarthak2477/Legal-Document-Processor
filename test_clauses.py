@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Test what clauses are actually being extracted."""
 
-from pipeline.local_storage import LocalStorageManager
+from pipeline.local_storage import DatabaseStorageManager
 
 def test_clause_extraction():
-    storage = LocalStorageManager()
+    storage = DatabaseStorageManager()
     all_data = storage._load_data()
     
     print("=== CLAUSE EXTRACTION TEST ===")

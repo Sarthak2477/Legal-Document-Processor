@@ -26,44 +26,62 @@ def process_contract_background(file_path: str, contract_id: str):
         from pipeline.firestore_manager import FirestoreManager
         
         # Initialize status
-        from pipeline.local_storage import LocalStorageManager
-        storage_manager = LocalStorageManager()
+        from pipeline.local_storage import DatabaseStorageManager
+        storage_manager = DatabaseStorageManager()
         storage_manager.update_contract_status(contract_id, 'processing', 0)
         
         pipeline = ContractPipeline()
-        result = pipeline.process_contract(file_path, contract_id)
+        result = pipeline.process_contract(file_path)
         
-        # Store processed contract data (memory optimized)
-        if result.get('success') and result.get('contract'):
-            # Convert contract object to dict for storage
-            contract = result['contract']
-            if hasattr(contract, 'dict'):
-                contract_dict = contract.dict()
-                # Remove embeddings and large data to save memory
-                if 'clauses' in contract_dict:
-                    for clause in contract_dict['clauses']:
-                        # Remove embeddings and large metadata
-                        clause.pop('embedding', None)
-                        clause.pop('metadata', None)
+        logger.info(f"Pipeline result keys: {list(result.keys()) if isinstance(result, dict) else 'not dict'}")
+        logger.info(f"Pipeline success: {result.get('success') if isinstance(result, dict) else 'unknown'}")
+        
+        # Store processed contract data
+        if result.get('success'):
+            logger.info("Processing was successful, attempting to store...")
+            
+            if result.get('contract'):
+                contract = result['contract']
+                logger.info(f"Contract object type: {type(contract)}")
                 
-                # Create minimal result for storage
+                # Convert to dict if it's an object
+                if hasattr(contract, 'dict'):
+                    contract_dict = contract.dict()
+                elif hasattr(contract, '__dict__'):
+                    contract_dict = contract.__dict__
+                else:
+                    contract_dict = contract
+                
+                logger.info(f"Contract dict keys: {list(contract_dict.keys()) if isinstance(contract_dict, dict) else 'not dict'}")
+                
+                # Create storage result
                 storage_result = {
                     'success': True,
-                    'contract': contract_dict,
-                    'processing_stats': result.get('processing_stats', {})
+                    'contract': contract_dict
                 }
                 
-                storage_manager.store_processed_contract(contract_id, storage_result)
-            
-            # Clean up memory immediately
-            del contract
-            import gc
-            gc.collect()
+                # Log clause info
+                if isinstance(contract_dict, dict) and 'clauses' in contract_dict:
+                    clauses = contract_dict['clauses']
+                    logger.info(f"Found {len(clauses)} clauses")
+                    if clauses and isinstance(clauses[0], dict):
+                        logger.info(f"First clause text length: {len(clauses[0].get('text', ''))}")
+                else:
+                    logger.warning("No clauses found in contract dict")
+                
+                success = storage_manager.store_processed_contract(contract_id, storage_result)
+                logger.info(f"Storage success: {success}")
+            else:
+                logger.error("No contract object in result")
+                storage_manager.store_processed_contract(contract_id, {'success': False, 'error': 'No contract data'})
+        else:
+            logger.error(f"Processing failed: {result.get('error', 'Unknown error')}")
+            storage_manager.store_processed_contract(contract_id, result)
         
         # Update status to completed
         storage_manager.update_contract_status(contract_id, 'completed', 100)
         
-        logger.info(f"Contract {contract_id} processed successfully")
+        logger.info(f"Contract {contract_id} processing completed")
         
         # Cleanup temporary file after processing
         if os.path.exists(file_path):
@@ -110,9 +128,9 @@ async def process_contract(
 async def get_contract_status(contract_id: str):
     """Get processing status of a contract."""
     try:
-        from pipeline.local_storage import LocalStorageManager
+        from pipeline.local_storage import DatabaseStorageManager
         
-        storage_manager = LocalStorageManager()
+        storage_manager = DatabaseStorageManager()
         status = storage_manager.get_contract_status(contract_id)
         
         if not status:
@@ -122,13 +140,13 @@ async def get_contract_status(contract_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{contract_id}")
+@router.get("/data/{contract_id}")
 async def get_contract(contract_id: str):
     """Get processed contract data."""
     try:
-        from pipeline.local_storage import LocalStorageManager
+        from pipeline.local_storage import DatabaseStorageManager
         
-        storage_manager = LocalStorageManager()
+        storage_manager = DatabaseStorageManager()
         contract = storage_manager.get_contract(contract_id)
         
         if not contract:
@@ -137,3 +155,45 @@ async def get_contract(contract_id: str):
         return contract
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/debug/{contract_id}")
+async def debug_contract(contract_id: str):
+    """Debug contract data structure."""
+    try:
+        from config import settings
+        from supabase import create_client
+        
+        supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        result = supabase.table('contracts').select('*').eq('contract_id', contract_id).execute()
+        
+        if not result.data:
+            return {"error": "Contract not found"}
+            
+        contract_data = result.data[0]
+        data = contract_data.get('data', {})
+        
+        debug_info = {
+            "contract_id": contract_id,
+            "status": contract_data.get('status'),
+            "has_data": bool(data),
+            "data_keys": list(data.keys()) if isinstance(data, dict) else "not dict",
+            "success": data.get('success') if isinstance(data, dict) else None
+        }
+        
+        if isinstance(data, dict) and data.get('contract'):
+            contract_obj = data['contract']
+            debug_info.update({
+                "contract_keys": list(contract_obj.keys()) if isinstance(contract_obj, dict) else "not dict"
+            })
+            
+            if isinstance(contract_obj, dict) and 'clauses' in contract_obj:
+                clauses = contract_obj['clauses']
+                debug_info.update({
+                    "clause_count": len(clauses) if isinstance(clauses, list) else 0,
+                    "first_clause_text_length": len(clauses[0].get('text', '')) if clauses and isinstance(clauses[0], dict) else 0
+                })
+        
+        return debug_info
+        
+    except Exception as e:
+        return {"error": str(e)}

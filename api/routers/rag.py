@@ -46,9 +46,9 @@ async def generate_summary(request: SummaryRequest):
     """Generate contract summary."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import LocalStorageManager
+        from pipeline.local_storage import DatabaseStorageManager
         
-        storage_manager = LocalStorageManager()
+        storage_manager = DatabaseStorageManager()
         contract = storage_manager.get_contract(request.contract_id)
         
         if not contract:
@@ -65,9 +65,9 @@ async def generate_summary(request: SummaryRequest):
 async def analyze_risks(request: RiskAnalysisRequest):
     """Analyze contract risks."""
     try:
-        from pipeline.local_storage import LocalStorageManager
+        from pipeline.local_storage import DatabaseStorageManager
         
-        storage_manager = LocalStorageManager()
+        storage_manager = DatabaseStorageManager()
         contract_data = storage_manager.get_contract(request.contract_id)
         
         if not contract_data:
@@ -120,9 +120,9 @@ async def suggest_redlines(request: RedlineRequest):
     """Suggest contract redlines."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import LocalStorageManager
+        from pipeline.local_storage import DatabaseStorageManager
         
-        storage_manager = LocalStorageManager()
+        storage_manager = DatabaseStorageManager()
         contract = storage_manager.get_contract(request.contract_id)
         
         if not contract:
@@ -140,9 +140,9 @@ async def negotiate_terms(request: NegotiationRequest):
     """Generate negotiation strategies."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import LocalStorageManager
+        from pipeline.local_storage import DatabaseStorageManager
         
-        storage_manager = LocalStorageManager()
+        storage_manager = DatabaseStorageManager()
         contract = storage_manager.get_contract(request.contract_id)
         
         if not contract:
