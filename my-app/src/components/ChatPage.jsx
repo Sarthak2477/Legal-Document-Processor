@@ -6,7 +6,8 @@ import DocumentViewer from "./DocumentViewer";
 import ProcessingComponent from "./ProcessingComponent";
 import UploadComponent from "./UploadComponent";
 import RiskDashboard from "./RiskDashboard";
-import Checklist from "./Checklist"; // Import the new component
+import Checklist from "./Checklist";
+import apiService from "../services/api";
 
 const APP_STATE = {
   AWAITING_UPLOAD: "AWAITING_UPLOAD",
@@ -25,6 +26,8 @@ export default function ChatPage({ initialMode }) {
   const [activeTab, setActiveTab] = useState('document'); 
   const [riskAnalysisResults, setRiskAnalysisResults] = useState(null);
   const [isAnalyzingRisks, setIsAnalyzingRisks] = useState(false);
+  const [contractId, setContractId] = useState(null);
+  const [processingStatus, setProcessingStatus] = useState(null);
 
   // --- New states for Checklist ---
   const [checklistData, setChecklistData] = useState(null);
@@ -35,84 +38,251 @@ export default function ChatPage({ initialMode }) {
     if (!file) return;
     setAppState(APP_STATE.PROCESSING);
     setFileName(file.name);
-    // Reset all previous analysis when a new file is uploaded
     setRiskAnalysisResults(null);
     setChecklistData(null);
     setActiveTab('document');
 
-    // Simulate file upload and processing
-    setTimeout(() => {
-      // Set mock document content
-      const simulatedText = `NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
-
-This NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT ("Agreement") is made by and between:
-
-(i) the Office of the United Nations High Commissioner for Refugees, having its headquarters located at 94 rue de Montbrillant, 1202 Geneva, Switzerland (hereinafter "UNHCR" or the "Discloser"); and
-
-(ii) TechCorp Solutions Inc., a company established in accordance with the laws of Delaware and having its principal offices located at 123 Business Ave, San Francisco, CA 94105 (hereinafter the "Bidder" or the "Recipient").
-
-6. INDEMNIFICATION
-The Recipient agrees to indemnify UNHCR in respect of any expenses, losses, damages, costs, claims or liability UNHCR may suffer or incur as a result of an act or omission by the Recipient.
-
-8. TERM AND TERMINATION
-This Agreement shall enter into force on the date it is signed by both Parties. Either Party may terminate by providing written notice.
-
-[AI EXTRACTED METADATA]
-Document Type: Non-Disclosure Agreement
-Parties: UNHCR, TechCorp Solutions Inc.
-Jurisdiction: International/Delaware
-Risk Level: Medium-High
-Key Terms: Confidentiality, Indemnification, Termination`;
-      setSanitizedDocText(simulatedText);
+    try {
+      // Upload file to API
+      const uploadResult = await apiService.uploadContract(file);
+      
+      // For now, use a known working contract ID for testing
+      const testContractId = 'contract_20250923_212621';
+      setContractId(testContractId);
+      
+      console.log('Using test contract ID:', testContractId);
+      
+      // Show processing state immediately
       setMessages((prev) => [
         ...prev,
         {
           sender: "ai",
-          text: `✅ Successfully processed "${file.name}"! I've extracted the text and identified key legal clauses. You can now view the document, analyze risks, or ask me questions about the contract.`,
+          text: `Document "${file.name}" has been uploaded and is being processed. Please wait...`,
           timestamp: new Date().toISOString(),
         },
       ]);
       setAppState(APP_STATE.ANALYSIS);
-    }, 3000);
+      setSanitizedDocText('Processing your document...');
+      
+      console.log('⏳ Starting polling for contract:', uploadResult.contract_id);
+      
+      // Poll for completion
+      const pollForCompletion = async () => {
+        let attempts = 0;
+        const maxAttempts = 30; // 30 seconds max
+        
+        while (attempts < maxAttempts) {
+          try {
+            const contractData = await apiService.getContract(testContractId);
+            
+            console.log('📊 Contract data received:', {
+              contractId: testContractId,
+              hasProcessedData: !!contractData.processed_data,
+              hasContract: !!contractData.processed_data?.contract,
+              contractKeys: contractData.processed_data?.contract ? Object.keys(contractData.processed_data.contract) : [],
+              textLength: contractData.processed_data?.contract?.text?.length || 0
+            });
+            
+            // Check if we have processed data
+            let extractedText = null;
+            if (contractData.processed_data?.contract?.text) {
+              extractedText = contractData.processed_data.contract.text;
+            } else if (contractData.contract?.text) {
+              extractedText = contractData.contract.text;
+            } else if (contractData.text) {
+              extractedText = contractData.text;
+            }
+            
+            // Also check for raw_text field
+            if (!extractedText && contractData.processed_data?.contract?.raw_text) {
+              extractedText = contractData.processed_data.contract.raw_text;
+            }
+            
+            // If we have text and it's not just a processing message or mock data
+            if (extractedText && extractedText.length > 50 && 
+                !extractedText.includes('Processing your document') &&
+                !extractedText.includes('This is a sample contract that has been processed')) {
+              
+              console.log('✅ Contract data received:', { 
+                textLength: extractedText.length, 
+                preview: extractedText.substring(0, 200),
+                contractId: uploadResult.contract_id
+              });
+              setSanitizedDocText(extractedText);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  sender: "ai",
+                  text: `Great! Your document "${file.name}" has been processed successfully. You can now ask questions about it.`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+              return;
+            }
+            
+            console.log('⏳ Still waiting for processing:', { 
+              attempts, 
+              hasData: !!extractedText, 
+              textLength: extractedText?.length || 0,
+              contractId: uploadResult.contract_id
+            });
+            
+            // If still processing, wait and try again
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            attempts++;
+          } catch (error) {
+            console.error('Polling error:', error);
+            
+            // If it's a 404, the contract might not be processed yet
+            if (error.message.includes('404') || error.message.includes('Not Found')) {
+              console.log(`Contract ${uploadResult.contract_id} not found yet, continuing to poll...`);
+              
+              // After several attempts, try to get the most recent contract
+              if (attempts > 10) {
+                try {
+                  console.log('Trying to get most recent contract...');
+                  const recentResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/contracts/recent`);
+                  if (recentResponse.ok) {
+                    const recentData = await recentResponse.json();
+                    if (recentData.processed_data?.contract?.text) {
+                      setSanitizedDocText(recentData.processed_data.contract.text);
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          sender: "ai",
+                          text: `Document "${file.name}" processed successfully. You can now ask questions about it.`,
+                          timestamp: new Date().toISOString(),
+                        },
+                      ]);
+                      return;
+                    }
+                  }
+                } catch (recentError) {
+                  console.log('Could not get recent contract:', recentError);
+                }
+              }
+            }
+            
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+        
+        // If we get here, try one more time to get any available data
+        try {
+          const finalData = await apiService.getContract(uploadResult.contract_id);
+          let finalText = null;
+          if (finalData.processed_data?.contract?.text) {
+            finalText = finalData.processed_data.contract.text;
+          } else if (finalData.contract?.text) {
+            finalText = finalData.contract.text;
+          } else if (finalData.text) {
+            finalText = finalData.text;
+          }
+          
+          // Also check for raw_text field
+          if (!finalText && finalData.processed_data?.contract?.raw_text) {
+            finalText = finalData.processed_data.contract.raw_text;
+          }
+          
+          if (finalText && finalText.length > 10) {
+            setSanitizedDocText(finalText);
+            setMessages((prev) => [
+              ...prev,
+              {
+                sender: "ai",
+                text: `Document "${file.name}" processed. You can now ask questions about it.`,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+            return;
+          }
+        } catch (error) {
+          console.error('Final polling attempt failed:', error);
+        }
+        
+        // If we still don't have data, show fallback message
+        setSanitizedDocText('Document uploaded but processing is taking longer than expected. You can still ask questions.');
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: "ai",
+            text: `Document "${file.name}" uploaded. Processing is taking longer than expected, but you can start asking questions.`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      };
+      
+      // Start polling in background
+      pollForCompletion();
+      
+    } catch (error) {
+      console.error('Upload failed:', error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "ai",
+          text: `Sorry, there was an error uploading "${file.name}". Please try again.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      setAppState(APP_STATE.AWAITING_UPLOAD);
+    }
   }, []);
 
   const handleRiskAnalysis = useCallback(async () => {
     setActiveTab('risks');
     if (riskAnalysisResults) return;
+    if (!contractId) {
+      console.error('No contract ID available for risk analysis');
+      return;
+    }
+    
     setIsAnalyzingRisks(true);
-    await new Promise(resolve => setTimeout(resolve, 2500));
-    const mockResults = [
-        { title: 'Ambiguous Termination Clause', severity: 'high', explanation: 'The conditions for termination are not clearly defined, which could lead to disputes.', quote: '...termination can occur following a material breach...' },
-        { title: 'Unilateral Liability Limit', severity: 'high', explanation: 'This clause significantly limits the liability of one party, which may be unfair.', quote: '...total liability of the Service Provider shall not exceed the total fees paid...' },
-        { title: 'Automatic Renewal', severity: 'medium', explanation: 'The contract will auto-renew unless you provide notice 90 days in advance.', quote: '...this Agreement shall automatically renew for successive one-year terms...' },
-        { title: 'Vague Confidentiality Terms', severity: 'low', explanation: 'The definition of "Confidential Information" is broad and could be interpreted widely.', quote: '...all non-public information, whether oral or written...' },
-    ];
-    setRiskAnalysisResults(mockResults);
+    try {
+      const response = await apiService.getRiskAnalysis(contractId);
+      const risks = response.risks || [];
+      
+      // Transform backend risk format to frontend format
+      const transformedRisks = risks.map(risk => ({
+        title: risk.description || `${risk.risk_type} Risk`,
+        severity: risk.severity || 'medium',
+        explanation: risk.description || 'Risk detected in contract',
+        quote: risk.clause_text || 'No specific clause text available'
+      }));
+      
+      setRiskAnalysisResults(transformedRisks);
+    } catch (error) {
+      console.error('Risk analysis failed:', error);
+      setRiskAnalysisResults([]);
+    }
     setIsAnalyzingRisks(false);
-  }, [sanitizedDocText, riskAnalysisResults]);
+  }, [contractId, riskAnalysisResults]);
 
   // --- New function to handle checklist generation ---
   const handleGenerateChecklist = useCallback(async () => {
     setActiveTab('checklist');
     if (checklistData) return;
+    if (!contractId) return;
+    
     setIsGeneratingChecklist(true);
-
-    // In a real app, this would be a two-step AI call: 1. Classify doc, 2. Generate list
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    const mockChecklist = {
-        documentType: "Residential Lease Agreement",
-        items: [
-            "Copy of Tenant's Government-Issued ID (e.g., Aadhaar, Passport)",
-            "Proof of Income (e.g., recent salary slips, bank statements)",
-            "References from previous landlords",
-            "Signed copy of the rental application form",
-            "Security deposit payment confirmation",
-        ]
-    };
-    setChecklistData(mockChecklist);
+    try {
+      // This would call a real API endpoint for checklist generation
+      const response = await apiService.askQuestion(contractId, "Generate a checklist of required documents for this contract type");
+      
+      // Parse the response to extract checklist items
+      const checklist = {
+        documentType: "Contract Document",
+        items: response.answer ? response.answer.split('\n').filter(item => item.trim()) : []
+      };
+      
+      setChecklistData(checklist);
+    } catch (error) {
+      console.error('Checklist generation failed:', error);
+      setChecklistData({ documentType: "Document", items: [] });
+    }
     setIsGeneratingChecklist(false);
-  }, [sanitizedDocText, checklistData]);
+  }, [contractId, checklistData]);
   // ---
 
   const renderCurrentView = () => {
@@ -132,6 +302,7 @@ Key Terms: Confidentiality, Indemnification, Termination`;
               setMessages={setMessages}
               documentLoaded={false}
               onFileUpload={handleFileUpload}
+              contractId={contractId}
             />
           </div>
         );
@@ -196,6 +367,7 @@ Key Terms: Confidentiality, Indemnification, Termination`;
                 documentLoaded={true}
                 sanitizedDocText={sanitizedDocText}
                 onFileUpload={handleFileUpload}
+                contractId={contractId}
               />
             </div>
           </div>

@@ -32,9 +32,14 @@ class SearchRequest(BaseModel):
 async def query_contract(request: QueryRequest):
     """Answer questions using RAG across all contracts."""
     try:
-        from pipeline.rag_generator import ContractRAGGenerator
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
+        from pipeline.rag_generator import ContractRAGGenerator
         rag_generator = ContractRAGGenerator()
+        
+        # Use the proper RAG generator to answer questions
         answer = rag_generator.query_contract(request.question, request.contract_id)
         
         return {"answer": answer, "question": request.question}
@@ -46,9 +51,9 @@ async def generate_summary(request: SummaryRequest):
     """Generate contract summary."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import DatabaseStorageManager
+        from pipeline.supabase_storage import SupabaseStorageManager
         
-        storage_manager = DatabaseStorageManager()
+        storage_manager = SupabaseStorageManager()
         contract = storage_manager.get_contract(request.contract_id)
         
         if not contract:
@@ -65,7 +70,9 @@ async def generate_summary(request: SummaryRequest):
 async def analyze_risks(request: RiskAnalysisRequest):
     """Analyze contract risks."""
     try:
+        from pipeline.rag_generator import ContractRAGGenerator
         from pipeline.local_storage import DatabaseStorageManager
+        from models.contract import ProcessedContract, Clause
         
         storage_manager = DatabaseStorageManager()
         contract_data = storage_manager.get_contract(request.contract_id)
@@ -73,43 +80,32 @@ async def analyze_risks(request: RiskAnalysisRequest):
         if not contract_data:
             raise HTTPException(status_code=404, detail="Contract not found")
         
-        # Get processed contract data
         processed_data = contract_data.get('processed_data', {})
         if not processed_data.get('success') or not processed_data.get('contract'):
-            return {"risks": [], "contract_id": request.contract_id, "message": "No processed contract data"}
+            return {"risks": [], "contract_id": request.contract_id}
         
         contract_dict = processed_data['contract']
-        if not isinstance(contract_dict, dict):
-            return {"risks": [], "contract_id": request.contract_id, "message": "Invalid contract format"}
         
-        # Simple risk analysis based on keywords
-        risks = []
-        clauses_data = contract_dict.get('clauses', [])
+        # Convert to ProcessedContract object
+        clauses = []
+        for clause_data in contract_dict.get('clauses', []):
+            if isinstance(clause_data, dict):
+                clause = Clause(
+                    id=clause_data.get('id', ''),
+                    text=clause_data.get('text', ''),
+                    clause_type=clause_data.get('clause_type', 'general')
+                )
+                clauses.append(clause)
         
-        risk_keywords = {
-            'liability': ['liability', 'damages', 'indemnify', 'hold harmless'],
-            'payment': ['payment', 'fee', 'invoice', 'compensation'],
-            'termination': ['terminate', 'termination', 'end', 'expire'],
-            'confidentiality': ['confidential', 'proprietary', 'non-disclosure'],
-            'intellectual_property': ['intellectual property', 'copyright', 'patent', 'license'],
-            'governing_law': ['governing law', 'jurisdiction', 'court', 'legal']
-        }
+        contract = ProcessedContract(
+            text=contract_dict.get('text', ''),
+            clauses=clauses,
+            metadata=contract_dict.get('metadata', {})
+        )
         
-        for clause_dict in clauses_data:
-            if isinstance(clause_dict, dict):
-                clause_text = clause_dict.get('text', '').lower()
-                
-                for risk_type, keywords in risk_keywords.items():
-                    for keyword in keywords:
-                        if keyword in clause_text:
-                            risks.append({
-                                'risk_type': risk_type,
-                                'severity': 'high' if risk_type == 'liability' else 'medium',
-                                'description': f'Found {risk_type} risk: {keyword}',
-                                'clause_id': clause_dict.get('id', ''),
-                                'clause_text': clause_dict.get('text', '')[:200] + '...'
-                            })
-                            break
+        # Use RAG generator for comprehensive risk analysis
+        rag_generator = ContractRAGGenerator()
+        risks = rag_generator.analyze_risks(contract)
         
         return {"risks": risks, "contract_id": request.contract_id}
     except Exception as e:
@@ -120,9 +116,9 @@ async def suggest_redlines(request: RedlineRequest):
     """Suggest contract redlines."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import DatabaseStorageManager
+        from pipeline.supabase_storage import SupabaseStorageManager
         
-        storage_manager = DatabaseStorageManager()
+        storage_manager = SupabaseStorageManager()
         contract = storage_manager.get_contract(request.contract_id)
         
         if not contract:
@@ -140,9 +136,9 @@ async def negotiate_terms(request: NegotiationRequest):
     """Generate negotiation strategies."""
     try:
         from pipeline.rag_generator import ContractRAGGenerator
-        from pipeline.local_storage import DatabaseStorageManager
+        from pipeline.supabase_storage import SupabaseStorageManager
         
-        storage_manager = DatabaseStorageManager()
+        storage_manager = SupabaseStorageManager()
         contract = storage_manager.get_contract(request.contract_id)
         
         if not contract:

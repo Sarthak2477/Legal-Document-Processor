@@ -1,0 +1,26 @@
+SAMPLE SERVICE AGREEMENT
+
+This Service Agreement ("Agreement") is entered into on January 1, 2024, between Company A ("Provider") and Company B ("Client").
+
+1. SERVICES
+Provider agrees to provide consulting services to Client as described in Exhibit A.
+
+2. PAYMENT TERMS
+Client shall pay Provider $5,000 per month, due on the first day of each month. Late payments will incur a 1.5% monthly fee.
+
+3. LIABILITY
+Provider's liability shall not exceed the total amount paid under this Agreement. Provider shall indemnify Client against third-party claims arising from Provider's negligence.
+
+4. CONFIDENTIALITY
+Both parties agree to maintain confidentiality of proprietary information disclosed during the term of this Agreement.
+
+5. TERMINATION
+Either party may terminate this Agreement with 30 days written notice. Upon termination, all confidential information must be returned.
+
+6. GOVERNING LAW
+This Agreement shall be governed by the laws of California.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement.
+
+Company A: _________________
+Company B: _________________
