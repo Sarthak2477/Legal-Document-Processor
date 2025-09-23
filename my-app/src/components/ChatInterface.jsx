@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
+import apiService from '../services/api';
 
 // 1. UploadComponent import is no longer needed.
 
@@ -8,9 +9,11 @@ const ChatInterface = ({
     messages = [], 
     setMessages, 
     documentLoaded = false, 
+    sanitizedDocText = '',
     onFileUpload,
     isProcessing = false,
-    maxMessageLength = 1000
+    maxMessageLength = 1000,
+    contractId = null
 }) => {
     const [userInput, setUserInput] = useState('');
     const [isAiResponding, setIsAiResponding] = useState(false);
@@ -51,17 +54,8 @@ const ChatInterface = ({
                 throw new Error(`Invalid file type. Please use PDF, DOC, DOCX, or TXT.`);
             }
 
-            // If validation passes - simulate successful upload
+            // If validation passes
             setUploadError(null);
-            
-            // Add upload success message
-            const uploadMessage = {
-                sender: 'ai',
-                text: `✅ Successfully uploaded "${file.name}". I can now analyze this contract and answer specific questions about it. Try asking me to summarize it or find potential risks!`,
-                timestamp: new Date().toISOString()
-            };
-            
-            setMessages(prev => [...prev, uploadMessage]);
             
             if (onFileUpload) {
                 onFileUpload(file);
@@ -98,34 +92,54 @@ const ChatInterface = ({
         setUserInput('');
         setIsAiResponding(true);
 
-        // --- SIMULATE API CALL WITH REALISTIC RESPONSES ---
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        const mockResponses = {
-            'summarize': 'This contract is a Non-Disclosure Agreement between UNHCR and a bidder. Key terms include: confidentiality obligations, 3-month return period, arbitration for disputes, and indemnification clauses. The agreement governs information sharing for RFP/2014/620.',
-            'risks': 'I identified 3 potential risks: 1) High liability exposure in indemnification clause (Section 6), 2) Broad confidentiality definition may restrict business operations, 3) Mandatory arbitration limits legal recourse options.',
-            'payment': 'This document does not contain specific payment terms. It appears to be a preliminary NDA for the bidding process. Payment terms would typically be outlined in the main service contract after bid selection.',
-            'parties': 'The parties are: (1) UNHCR (United Nations High Commissioner for Refugees) located at 94 rue de Montbrillant, Geneva, Switzerland, and (2) The Bidder (company details to be filled in based on specific bidder).',
-            'termination': 'Either party may terminate with written notice. However, confidentiality obligations survive termination. All confidential information must be returned or destroyed within 3 months if no business relationship is established.',
-            'default': documentLoaded 
-                ? `Based on your uploaded contract, here's my analysis of "${currentQuestion}": This appears to be related to confidentiality and information sharing provisions. The document establishes clear obligations for handling sensitive information during the procurement process.`
-                : `As a legal AI assistant, regarding "${currentQuestion}": I can provide general legal guidance, but for specific contract analysis, please upload your document for more accurate insights.`
-        };
-        
-        let aiResponse;
-        const question = currentQuestion.toLowerCase();
-        if (question.includes('summar')) aiResponse = mockResponses.summarize;
-        else if (question.includes('risk')) aiResponse = mockResponses.risks;
-        else if (question.includes('payment') || question.includes('pay')) aiResponse = mockResponses.payment;
-        else if (question.includes('parties') || question.includes('who')) aiResponse = mockResponses.parties;
-        else if (question.includes('terminat')) aiResponse = mockResponses.termination;
-        else aiResponse = mockResponses.default;
-        
-        setMessages([...newMessages, { 
-            sender: 'ai', 
-            text: aiResponse,
-            timestamp: new Date().toISOString()
-        }]);
+        try {
+            // Try to use the real API first
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/rag/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    question: currentQuestion,
+                    contract_id: contractId,
+                }),
+            });
+            
+            let aiResponse;
+            if (response.ok) {
+                const data = await response.json();
+                aiResponse = data.answer || 'I received your question but couldn\'t generate a response.';
+            } else {
+                throw new Error('API request failed');
+            }
+            
+            setMessages([...newMessages, { 
+                sender: 'ai', 
+                text: aiResponse,
+                timestamp: new Date().toISOString()
+            }]);
+        } catch (error) {
+            console.warn('API call failed, using fallback response:', error.message);
+            
+            // Generate fallback response based on question
+            let fallbackResponse = "I'm having trouble connecting to the analysis service right now.";
+            
+            if (documentLoaded && contractId) {
+                if (sanitizedDocText && sanitizedDocText.length > 0) {
+                    fallbackResponse = `I can see your document is loaded with ${sanitizedDocText.length} characters of content. Please try asking specific questions about the contract terms, parties, or clauses.`;
+                } else {
+                    fallbackResponse += " I can see you have a document uploaded, but I'm having trouble accessing its content. Please try re-uploading or ask general questions.";
+                }
+            } else {
+                fallbackResponse += " Please try uploading a document first, or ask general legal questions.";
+            }
+            
+            setMessages([...newMessages, { 
+                sender: 'ai', 
+                text: fallbackResponse,
+                timestamp: new Date().toISOString()
+            }]);
+        }
         setIsAiResponding(false);
     };
 
@@ -268,9 +282,11 @@ ChatInterface.propTypes = {
     messages: PropTypes.array,
     setMessages: PropTypes.func.isRequired,
     documentLoaded: PropTypes.bool,
+    sanitizedDocText: PropTypes.string,
     onFileUpload: PropTypes.func,
     isProcessing: PropTypes.bool,
-    maxMessageLength: PropTypes.number
+    maxMessageLength: PropTypes.number,
+    contractId: PropTypes.string
 };
 
 export default ChatInterface;

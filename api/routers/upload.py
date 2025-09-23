@@ -19,8 +19,9 @@ async def upload_contract(
     """Upload contract file to temporary storage."""
     try:
         # Validate file type
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(status_code=400, detail="Only PDF files supported")
+        allowed_extensions = ['.pdf', '.txt', '.doc', '.docx']
+        if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
+            raise HTTPException(status_code=400, detail="Only PDF, TXT, DOC, and DOCX files supported")
         
         # Create uploads directory
         upload_dir = Path("uploads")
@@ -37,13 +38,17 @@ async def upload_contract(
         contract_id = f"contract_{timestamp}"
         
         if process_immediately:
-            from .contracts import process_contract_background
-            background_tasks.add_task(
-                process_contract_background,
-                str(file_path),
-                contract_id
-            )
-            status = "processing"
+            try:
+                from .contracts import process_contract_background
+                background_tasks.add_task(
+                    process_contract_background,
+                    str(file_path),
+                    contract_id
+                )
+                status = "processing"
+            except Exception as e:
+                logger.error(f"Background processing failed: {e}")
+                status = "uploaded"
         else:
             status = "uploaded"
         

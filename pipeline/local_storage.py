@@ -15,12 +15,36 @@ class DatabaseStorageManager:
     """Database-only storage for contract data."""
     
     def __init__(self):
-        # No local storage initialization
-        pass
+        self._supabase_client = None
+    
+    def _get_supabase_client(self):
+        """Get cached Supabase client."""
+        if self._supabase_client is None:
+            from config import settings
+            if getattr(settings, 'SUPABASE_URL', None) and getattr(settings, 'SUPABASE_KEY', None):
+                from supabase import create_client
+                self._supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        return self._supabase_client
     
     def get_contract_status(self, contract_id: str) -> Optional[Dict[str, Any]]:
         """Get contract processing status (database-only)."""
-        return self._get_from_database(contract_id)
+        try:
+            result = self._get_from_database(contract_id)
+            if result:
+                return result
+            # Return default status if not found
+            return {
+                'contract_id': contract_id,
+                'status': 'not_found',
+                'message': 'Contract not found'
+            }
+        except Exception as e:
+            logger.error(f"Error getting contract status for {contract_id}: {e}")
+            return {
+                'contract_id': contract_id,
+                'status': 'error',
+                'message': f'Status check failed: {str(e)}'
+            }
     
     def update_contract_status(self, contract_id: str, status: str, progress: int = 0) -> bool:
         """Update contract processing status (database-only)."""
@@ -92,7 +116,7 @@ class DatabaseStorageManager:
                     'status': contract_data.get('status', 'completed'),
                     'processed_data': contract_data.get('data', {}),
                     'created_at': contract_data.get('created_at'),
-                    'updated_at': contract_data.get('created_at')
+                    'updated_at': contract_data.get('updated_at')
                 }
             else:
                 logger.info(f"Contract {contract_id} not found in database")
@@ -110,9 +134,7 @@ class DatabaseStorageManager:
             # Store ONLY in database, no local storage
             success = self._store_in_database(contract_id, contract_data)
             
-            # Force garbage collection to free memory
-            del contract_data
-            gc.collect()
+
             
             return success
         except Exception as e:
@@ -179,8 +201,6 @@ class DatabaseStorageManager:
             else:
                 logger.error(f"❌ Failed to store {contract_id}: No data returned")
                 return False
-                
-            return True
         except ImportError as e:
             logger.error(f"Supabase library not available: {e}")
             return False
@@ -192,6 +212,30 @@ class DatabaseStorageManager:
     def get_all_contracts(self) -> Dict[str, Any]:
         """Get all contracts from database."""
         return self._load_data()
+    
+    def list_contracts(self) -> list:
+        """List all contracts."""
+        try:
+            from config import settings
+            
+            if not getattr(settings, 'SUPABASE_URL', None) or not getattr(settings, 'SUPABASE_KEY', None):
+                logger.debug("Supabase not configured, returning empty list")
+                return []
+                
+            from supabase import create_client
+            supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            
+            result = supabase.table('contracts').select('contract_id, status, created_at, updated_at').execute()
+            
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Error listing contracts: {e}")
+            return []
+    
+    def _load_data(self) -> Dict[str, Any]:
+        """Load all data from database."""
+        contracts = self.list_contracts()
+        return {"contracts": contracts}
 
 # Alias for backward compatibility
 LocalStorageManager = DatabaseStorageManager

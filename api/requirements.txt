@@ -8,3 +8,4 @@ pdfplumber==0.10.3
 Pillow==10.1.0
 spacy==3.6.0
 en-core-web-sm==3.6.0
+supabase==2.3.4

@@ -8,20 +8,22 @@ from typing import List, Dict, Any, Optional
 import os
 
 try:
-    from google import genai
+    import google.generativeai as genai
 except ImportError:
     # Mock class for testing when dependencies are not available
     class genai:
-        class Client:
-            def __init__(self, api_key=None):
+        @staticmethod
+        def configure(api_key=None):
+            pass
+        
+        class GenerativeModel:
+            def __init__(self, model_name):
                 pass
             
-            class models:
-                @staticmethod
-                def generate_content(model, contents):
-                    class MockResponse:
-                        text = f"Mock response: {contents[:100]}..."
-                    return MockResponse()
+            def generate_content(self, prompt):
+                class MockResponse:
+                    text = f"Mock response: {prompt[:100]}..."
+                return MockResponse()
 from models.contract import Clause, ProcessedContract
 
 
@@ -37,7 +39,9 @@ class ContractRAGGenerator:
         api_key = settings.GEMINI_API_KEY
         if api_key:
             try:
-                self.client = genai.Client(api_key=api_key)
+                genai.configure(api_key=api_key)
+                self.client = genai.GenerativeModel('gemini-1.5-flash')
+                self.logger.info("Gemini client initialized successfully")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Gemini client: {e}")
                 self.client = None
@@ -414,8 +418,8 @@ class ContractRAGGenerator:
                 # Use semantic search to find relevant clauses
                 search_results = self.embedder.search_similar_clauses(
                     query_text=question,
-                    limit=3,
-                    similarity_threshold=0.3
+                    limit=5,
+                    similarity_threshold=0.2
                 )
                 
                 if search_results:
@@ -466,7 +470,7 @@ class ContractRAGGenerator:
                 context = "\n\n".join(context_clauses)
             
             # Create prompt
-            prompt = f"The following are contextually relevant contract clauses found through semantic search based on your question:\n\n{context}\n\nQuestion: {question}\n\nAnswer based only on these relevant contract clauses above. If the answer cannot be found in these specific clauses, say 'Not found in the relevant contract clauses'."
+            prompt = f"You are analyzing a contract. Based on the following contract clauses, answer the user's question.\n\nContract Clauses:\n{context}\n\nQuestion: {question}\n\nInstructions:\n- Answer based on the contract clauses above\n- If the exact information isn't available, provide related information from the clauses\n- If no relevant information exists, say 'No relevant information found in the contract'\n- Be helpful and extract any related details\n\nAnswer:"
             
             # Generate answer using Gemini
             return self._generate_with_llm(prompt)
@@ -775,10 +779,7 @@ Answer:
                 self.logger.info(f"Gemini generation attempt {attempt + 1}/{max_retries}")
                 
                 # Generate response using Gemini
-                response = self.client.models.generate_content(
-                    model="gemini-2.0-flash-exp",
-                    contents=prompt
-                )
+                response = self.client.generate_content(prompt)
                 
                 # Validate response
                 if not response.text or len(response.text.strip()) < 10:
